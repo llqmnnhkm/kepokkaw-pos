@@ -169,6 +169,10 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .btn{height:48px;border:0;border-radius:12px;background:var(--red);color:var(--on-red);font-weight:700;padding:0 18px}
 .btn.dark{background:var(--ink);color:var(--bg)}
 .btn.quiet{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--bad);border:1.5px solid var(--bad)}
+.btn.del{background:var(--bad);color:var(--on-red)}
+.btn:disabled{opacity:.35;cursor:default}
+.del-list{background:var(--surface-2);border-radius:12px;padding:4px 12px}
 .menu-row{display:grid;grid-template-columns:minmax(0,2fr) 90px minmax(0,1.2fr) auto auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .menu-row:last-child{border-bottom:0}
 .tog{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
@@ -449,7 +453,7 @@ function vCashier(m){
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
     <aside class="ticket">${stamp}
-      <div class="ticket-head"><h2>Order #${S.orders.filter(o=>o.date===t).length+1}</h2><span>${nToday} orders today</span></div>
+      <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${nToday} orders today</span></div>
       ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
       <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line ${fx.pop===id&&fx.newLine?'slide':''}">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
@@ -735,7 +739,7 @@ function complete(){
   const lines=Object.entries(cart).filter(([,q])=>q>0).map(([id,qty])=>{const it=item(id);return{itemId:id,name:it.name,price:it.price,qty}});
   if(!lines.length)return;
   for(const l of lines){const it=item(l.itemId);if(it.stock&&it.qty<l.qty){toast(`Only ${it.qty} ${it.name} left`);return}}
-  const ts=Date.now(),date=dkey(new Date(ts)),no=S.orders.filter(o=>o.date===date).length+1,total=lines.reduce((s,l)=>s+l.price*l.qty,0);
+  const ts=Date.now(),date=dkey(new Date(ts)),no=nextNo(date),total=lines.reduce((s,l)=>s+l.price*l.qty,0);
   const oid=uid();
   S.orders.push({id:oid,no,ts,date,lines,total,by:role,voided:null});
   lines.forEach(l=>{const it=item(l.itemId);if(it.stock){it.qty-=l.qty;S.moves.push({ts,itemId:it.id,delta:-l.qty,reason:`Sold · order #${no}`})}});
@@ -743,6 +747,7 @@ function complete(){
   undoTimer=setTimeout(()=>{if(view==='cashier'&&$('modal').hidden)render()},UNDO_MS+500);
   fx.saved={no,total};save();render();
 }
+function nextNo(d){return S.orders.reduce((m,o)=>o.date===d&&o.no>m?o.no:m,0)+1}
 function canVoid(o){return !o.voided&&(role==='admin'||Date.now()-o.ts<=UNDO_MS)}
 function orderSheet(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
@@ -752,7 +757,31 @@ function orderSheet(id){
     <div class="sum-row"><span>Total</span><div class="amt" style="font-size:40px">${rm(o.total)}</div></div>
     ${o.voided?`<p class="note"><span class="pill void">Voided</span> ${tm(o.voided.ts)} · ${esc(o.voided.reason)}</p>`:''}
     ${role==='staff'&&!o.voided?`<p class="note">${canVoid(o)?'You can cancel an order for 2 minutes after it is made.':'Only the admin can void this order now.'}</p>`:''}
-    <div class="acts"><button class="btn quiet" data-act="close">Close</button>${canVoid(o)?`<button class="btn" data-act="voidask" data-id="${o.id}">Void order</button>`:''}</div>`);
+    <div class="acts">${role==='admin'?`<button class="btn danger" data-act="delask" data-id="${o.id}" style="margin-right:auto">Delete</button>`:''}<button class="btn quiet" data-act="close">Close</button>${canVoid(o)?`<button class="btn" data-act="voidask" data-id="${o.id}">Void order</button>`:''}</div>`);
+}
+function delSheet(id){
+  const o=S.orders.find(x=>x.id===id);if(!o||role!=='admin')return;
+  openModal(`<h2>Delete order #${o.no}?</h2>
+    <p class="note">Deleting removes this order completely. It will not show in Orders, the Dashboard, day reports or Excel, and it cannot be undone. To cancel a sale but keep a record of it, use <b>Void order</b> instead.</p>
+    <div class="del-list">${o.lines.map(l=>`<div class="line"><div><div class="lname">${esc(l.name)}</div><div class="lsub">${l.qty} × ${rm0(l.price)}</div></div><b>${rm(l.price*l.qty)}</b></div>`).join('')}</div>
+    <p class="note">${dlabel(o.date)}, ${tm(o.ts)} · total ${rm(o.total)}${o.voided?' · already voided':''}</p>
+    <div class="acts"><button class="btn quiet" data-act="order" data-id="${o.id}">Back</button><button class="btn danger" data-act="delstep2" data-id="${o.id}">Continue</button></div>`);
+}
+function delSheet2(id){
+  const o=S.orders.find(x=>x.id===id);if(!o||role!=='admin')return;
+  openModal(`<h2>Are you sure?</h2>
+    <p class="note">Type <b>${o.no}</b> below to delete order #${o.no} (${rm(o.total)}) forever.</p>
+    <div class="field"><label for="delConfirm">Order number</label><input class="inp" id="delConfirm" data-no="${o.no}" inputmode="numeric" autocomplete="off" placeholder="${o.no}"></div>
+    <div class="acts"><button class="btn quiet" data-act="close">Cancel</button><button class="btn del" id="delBtn" data-act="del" data-id="${o.id}" disabled>Delete forever</button></div>`);
+  setTimeout(()=>{const i=$('delConfirm');i&&i.focus()},350);
+}
+function doDelete(id){
+  const o=S.orders.find(x=>x.id===id),i=$('delConfirm');
+  if(!o||role!=='admin'||!i||i.value.trim()!==String(o.no))return;
+  const ts=Date.now();
+  if(!o.voided)o.lines.forEach(l=>{const it=item(l.itemId);if(it&&it.stock){it.qty+=l.qty;S.moves.push({ts,itemId:it.id,delta:l.qty,reason:`Deleted order #${o.no}`})}});
+  S.orders=S.orders.filter(x=>x.id!==id);
+  save();closeModal();render();toast(`Order #${o.no} deleted`);
 }
 function voidSheet(id){
   const o=S.orders.find(x=>x.id===id);
@@ -856,6 +885,9 @@ document.addEventListener('click',e=>{
     case 'order':orderSheet(id);break;
     case 'voidask':voidSheet(id);break;
     case 'void':doVoid(id);break;
+    case 'delask':delSheet(id);break;
+    case 'delstep2':delSheet2(id);break;
+    case 'del':doDelete(id);break;
     case 'oday':ordDate=addDays(ordDate,+id);if(ordDate>today())ordDate=today();render();break;
     case 'dash':dashP=id;fx.enter=true;render();break;
     case 'close':closeModal();break;
@@ -899,6 +931,10 @@ document.addEventListener('click',e=>{
     case 'clearsample':ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;cart={};save();render();toast('Sample data cleared')});break;
     case 'restoresample':ask('Load sample data?','This replaces everything recorded on this device with 14 days of made-up sales.','Load sample',()=>{S=seed();cart={};save();render();toast('Sample data loaded')});break;
   }
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='delConfirm'){const b=$('delBtn');if(b)b.disabled=t.value.trim()!==t.dataset.no}
 });
 document.addEventListener('change',e=>{
   const t=e.target;

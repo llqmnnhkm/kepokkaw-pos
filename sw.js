@@ -1,6 +1,6 @@
 // Keeps the whole app on the device so it opens with no internet.
 // Bump VERSION whenever any file below changes, so devices pick up the update.
-const VERSION = 'kepokkaw-v4';
+const VERSION = 'kepokkaw-v5';
 const FILES = [
   './',
   './index.html',

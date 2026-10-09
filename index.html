@@ -122,7 +122,7 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 /* charts */
 .chart{position:relative;padding-top:18px}
 .chart .max{position:absolute;top:0;left:0;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.bars{display:flex;align-items:stretch;gap:4px;height:170px;border-bottom:1px solid var(--line);background:linear-gradient(var(--line) 1px,transparent 1px) 0 0/100% 50%}
+.bars{position:relative;display:flex;align-items:stretch;gap:4px;height:170px;border-bottom:1px solid var(--line);background:linear-gradient(var(--line) 1px,transparent 1px) 0 0/100% 50%}
 .bcol{flex:1;min-width:0;display:flex;align-items:flex-end;gap:2px}
 .bcol i{flex:1;display:block;border-radius:3px 3px 0 0;min-height:1px}
 .bcol i.s{background:var(--red)} .bcol i.e{background:var(--exp)}
@@ -134,6 +134,21 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .hrow .tr i{display:block;height:100%;border-radius:7px}
 .hrow .v{text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
 .hrow .v small{display:block;color:var(--muted);font-size:12px}
+
+.trend{display:block;font-size:12px;font-weight:600;margin-top:2px}
+.trend.up{color:var(--good)} .trend.down{color:var(--bad)}
+.tline{position:absolute;left:0;right:0;border-top:2px dashed var(--ink);opacity:.6;pointer-events:none}
+.tline span{position:absolute;right:0;top:-17px;font-size:11px;font-weight:700;color:var(--ink)}
+.prog{height:16px;background:var(--surface-2);border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.prog i{display:block;height:100%;background:var(--good);border-radius:8px}
+.tablewrap{overflow-x:auto}
+.mt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+.mt th{text-align:right;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+.mt td{text-align:right;padding:8px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+.mt th:first-child,.mt td:first-child{text-align:left}
+.mt tr:last-child td{border-bottom:0}
+.undo{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 16px;background:var(--surface-2);border-bottom:1px solid var(--line);font-size:14px;font-weight:600}
+.undo .ghost{padding:6px 14px;border-color:var(--red);color:var(--red);background:var(--surface)}
 
 /* lists */
 .list{display:grid}
@@ -234,12 +249,15 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 <div class="pin" id="pin" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
+<script src="xlsx.js"></script>
 <script>
 (function(){
 const LS='kepokkaw-pos-v1', LS_ROLE='kepokkaw-pos-role';
 const EXP_CATS=['Lekor stock','Frozen stock','Cooking oil','Gas','Packaging','Sauces & toppings','Wages','Rent','Other'];
 const VIEWS=[['cashier','Cashier'],['orders','Orders'],['dashboard','Dashboard'],['expenses','Expenses'],['stock','Stock'],['settings','Settings']];
 const STAFF_VIEWS=['cashier','orders','stock'];
+const UNDO_MS=120000;
+let lastOrderId=null, undoTimer=null;
 let S, role='admin', view='cashier', cart={}, dashP='7d', ordDate=null, expMonth=null, pinRole='staff', pinBuf='', pending=null;
 
 /* ---------- helpers ---------- */
@@ -294,10 +312,12 @@ function seed(){
   const s={v:1,sample:true,items:baseItems(),orders:[],expenses:[],moves:[],pins:{admin:'1234',staff:'0000'},lowAt:5};
   const frz=s.items.find(i=>i.id==='frz'), now=Date.now(), start=addDays(today(),-13);
   const flav=['ori','hot','egg','bbq','chz'], fw=[30,22,18,12,18];
-  const hrs=[10,11,12,13,14,15,16,17,18,19,20,21], hw=[2,3,5,6,4,3,4,6,8,9,7,4];
+  const hrs=[7,8,9,10,11,12,13,14,15], hw=[5,9,8,5,4,7,6,3,2];
   const exp=(date,cat,amount,note)=>s.expenses.push({id:uid()+s.expenses.length,date,cat,amount,note,ts:tsOf(date,9)});
   frz.qty=24; s.moves.push({ts:tsOf(start,9),itemId:'frz',delta:24,reason:'Opening stock'}); exp(start,'Frozen stock',528,'24 packs');
+  s.target=800;
   days(start,today()).forEach((day,i)=>{
+    const dow=parse(day).getDay();if(dow===1)return;
     if(i>0&&frz.qty<8){frz.qty+=20;s.moves.push({ts:tsOf(day,9),itemId:'frz',delta:20,reason:'Received stock'});exp(day,'Frozen stock',440,'20 packs')}
     if(i%2===0)exp(day,'Lekor stock',260+Math.round(r()*60),'Keropok lekor');
     if(i%3===0)exp(day,'Cooking oil',42,'2 bottles');
@@ -305,7 +325,7 @@ function seed(){
     if(i%7===0)exp(day,'Packaging',65,'Cups & paper');
     if(i%4===1)exp(day,'Sauces & toppings',48+Math.round(r()*20),'Cheese sauce, seasoning');
     exp(day,'Wages',70,'Staff');
-    const dow=parse(day).getDay(), wk=dow===0||dow===6, n=Math.round(26+r()*22+(wk?14:0)), list=[];
+    const wk=dow===0||dow===6, n=Math.round(26+r()*22+(wk?14:0)), list=[];
     for(let k=0;k<n;k++){
       const ts=tsOf(day,pick(hrs,hw),Math.floor(r()*60),Math.floor(r()*60));
       const nl=pick([1,2,3],[60,30,10]), q={};
@@ -356,10 +376,12 @@ function vCashier(m){
   const lines=Object.entries(cart).filter(([,q])=>q>0);
   const total=lines.reduce((s,[id,q])=>s+item(id).price*q,0);
   const count=lines.reduce((s,[,q])=>s+q,0);
+  const lo=lastOrderId&&S.orders.find(o=>o.id===lastOrderId), showUndo=lo&&!lo.voided&&Date.now()-lo.ts<=UNDO_MS;
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
     <aside class="ticket">
       <div class="ticket-head"><h2>Order #${S.orders.filter(o=>o.date===t).length+1}</h2><span>${nToday} orders today</span></div>
+      ${showUndo?`<div class="undo"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
       <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
           <div class="step"><button data-act="dec" data-id="${id}" aria-label="One less">−</button><b>${q}</b><button data-act="add" data-id="${id}" aria-label="One more">+</button></div>
@@ -380,12 +402,13 @@ function vOrders(m){
   const live=list.filter(o=>!o.voided), sales=live.reduce((s,o)=>s+o.total,0);
   m.innerHTML=`<div class="wrap">
     <div class="bar"><h1 class="h1">Orders</h1>
-      ${role==='admin'?`<div class="chips"><button class="chip" data-act="oday" data-id="-1">‹ Prev</button><input class="inp" type="date" id="ordDate" value="${ordDate}" max="${t}" style="width:auto"><button class="chip" data-act="oday" data-id="1" ${ordDate>=t?'disabled':''}>Next ›</button></div>`:`<span class="note">Today, ${dlabel(t)}</span>`}
+      <div class="chips">${role==='admin'?`<button class="chip" data-act="oday" data-id="-1">‹ Prev</button><input class="inp" type="date" id="ordDate" value="${ordDate}" max="${t}" style="width:auto"><button class="chip" data-act="oday" data-id="1" ${ordDate>=t?'disabled':''}>Next ›</button>`:`<span class="note" style="align-self:center">Today, ${dlabel(t)}</span>`}
+      <button class="btn dark" data-act="report">Send day report</button></div>
     </div>
     <div class="stats">
       <div class="stat"><span>Orders</span><b>${live.length}</b>${list.length-live.length?`<small>${list.length-live.length} voided</small>`:''}</div>
       ${role==='admin'?`<div class="stat"><span>Sales</span><b>${rm(sales)}</b></div>`:''}
-      <div class="stat"><span>Portions sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
+      <div class="stat"><span>Items sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
     </div>
     <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${o.id}">
         <span class="no">#${o.no}</span>
@@ -394,47 +417,115 @@ function vOrders(m){
   </div>`;
 }
 
-function range(p){const t=today();return{today:[t,t],yesterday:[addDays(t,-1),addDays(t,-1)],'7d':[addDays(t,-6),t],'30d':[addDays(t,-29),t],month:[t.slice(0,8)+'01',t]}[p]}
+const PERIODS=[['today','Today'],['yesterday','Yesterday'],['7d','7 days'],['30d','30 days'],['month','This month'],['lastmonth','Last month']];
+const PREV_LABEL={today:'yesterday',yesterday:'day before','7d':'prev 7 days','30d':'prev 30 days',month:'last month',lastmonth:'month before'};
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], DOW_LONG=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const hl=h=>h===0||h===24?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
+const money0=n=>'RM '+Math.round(n).toLocaleString('en-MY');
+const dlong=k=>parse(k).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'});
+function range(p){
+  const t=today(),ms=t.slice(0,8)+'01';
+  if(p==='today')return[t,t];
+  if(p==='yesterday'){const y=addDays(t,-1);return[y,y]}
+  if(p==='7d')return[addDays(t,-6),t];
+  if(p==='30d')return[addDays(t,-29),t];
+  if(p==='month')return[ms,t];
+  const e=addDays(ms,-1);return[e.slice(0,8)+'01',e];
+}
+function prevRange(p,a,b){
+  if(p==='month'){const pe=addDays(a,-1),ps=pe.slice(0,8)+'01',end=addDays(ps,days(a,b).length-1);return[ps,end<pe?end:pe]}
+  if(p==='lastmonth'){const pe=addDays(a,-1);return[pe.slice(0,8)+'01',pe]}
+  const n=days(a,b).length;return[addDays(a,-n),addDays(a,-1)];
+}
+function totals(a,b){
+  const ords=S.orders.filter(o=>!o.voided&&o.date>=a&&o.date<=b), exps=S.expenses.filter(e=>e.date>=a&&e.date<=b);
+  const sales=ords.reduce((s,o)=>s+o.total,0), cost=exps.reduce((s,e)=>s+e.amount,0);
+  return{ords,exps,sales,cost,profit:sales-cost};
+}
+function trend(cur,prev,goodUp){
+  if(!prev)return'';
+  const p=(cur-prev)/Math.abs(prev)*100, up=cur>=prev, good=goodUp?up:!up;
+  return `<small class="trend ${good?'up':'down'}">${up?'▲':'▼'} ${Math.abs(Math.round(p))}% vs ${PREV_LABEL[dashP]}</small>`;
+}
+function itemTotals(ords){
+  const per={};ords.forEach(o=>o.lines.forEach(l=>{const p=per[l.itemId]||(per[l.itemId]={id:l.itemId,name:l.name,qty:0,rev:0});p.qty+=l.qty;p.rev+=l.price*l.qty}));
+  return Object.values(per).sort((x,y)=>y.rev-x.rev);
+}
 function vDash(m){
-  const [a,b]=range(dashP), ds=days(a,b);
-  const ords=S.orders.filter(o=>!o.voided&&o.date>=a&&o.date<=b);
-  const exps=S.expenses.filter(e=>e.date>=a&&e.date<=b);
-  const sales=ords.reduce((s,o)=>s+o.total,0), cost=exps.reduce((s,e)=>s+e.amount,0), profit=sales-cost;
-  const per={};ords.forEach(o=>o.lines.forEach(l=>{const p=per[l.itemId]||(per[l.itemId]={name:l.name,qty:0,rev:0});p.qty+=l.qty;p.rev+=l.price*l.qty}));
-  const prods=Object.entries(per).sort((x,y)=>y[1].rev-x[1].rev), maxRev=Math.max(1,...prods.map(p=>p[1].rev));
-  const hours=[];for(let h=10;h<=22;h++)hours.push(h);
-  const hc=hours.map(h=>ords.filter(o=>new Date(o.ts).getHours()===h).length), maxH=Math.max(1,...hc);
-  const chips=[['today','Today'],['yesterday','Yesterday'],['7d','7 days'],['30d','30 days'],['month','This month']].map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('');
+  const [a,b]=range(dashP), ds=days(a,b), T=totals(a,b), [pa,pb]=prevRange(dashP,a,b), P=totals(pa,pb);
+  const {ords,exps,sales,cost,profit}=T, target=S.target||0;
+  const prods=itemTotals(ords), maxRev=Math.max(1,...prods.map(p=>p.rev));
+
+  // busy hours: always show 7am-4pm, stretched to any hour that has sales
+  const hs=ords.map(o=>new Date(o.ts).getHours()), h0=Math.min(7,...hs), h1=Math.max(16,...hs), hours=[];
+  for(let h=h0;h<=h1;h++)hours.push(h);
+  const hc=hours.map(h=>hs.filter(x=>x===h).length), maxH=Math.max(1,...hc), hstep=hours.length>12?2:1;
+
+  // sales vs expenses by day, with the target line
   let daily='';
   if(ds.length>1){
     const sd=ds.map(d=>ords.filter(o=>o.date===d).reduce((s,o)=>s+o.total,0)), ed=ds.map(d=>exps.filter(e=>e.date===d).reduce((s,e)=>s+e.amount,0));
-    const mx=Math.max(1,...sd,...ed), step=ds.length>14?5:1;
-    daily=`<div class="panel"><h3>Sales vs expenses by day</h3>
-      <div class="legend"><span><i style="background:var(--red)"></i>Sales</span><span><i style="background:var(--exp)"></i>Expenses</span></div>
-      <div class="chart"><span class="max">${rm0(Math.round(mx))}</span>
-      <div class="bars">${ds.map((d,i)=>`<div class="bcol" title="${dlabel(d)}: sales ${rm(sd[i])}, expenses ${rm(ed[i])}"><i class="s" style="height:${sd[i]/mx*100}%"></i><i class="e" style="height:${ed[i]/mx*100}%"></i></div>`).join('')}</div>
+    const mx=Math.max(1,...sd,...ed,target*1.08), step=ds.length>14?5:1, hit=target?sd.filter(v=>v>=target).length:0, open=sd.filter(v=>v>0).length;
+    daily=`<div class="panel"><h3>Sales vs expenses by day${target?` · target hit on ${hit} of ${open} open days`:''}</h3>
+      <div class="legend"><span><i style="background:var(--red)"></i>Sales</span><span><i style="background:var(--exp)"></i>Expenses</span>${target?'<span><i style="background:transparent;border-top:2px dashed var(--ink);border-radius:0;height:0;vertical-align:3px"></i>Daily target</span>':''}</div>
+      <div class="chart"><span class="max">${money0(mx)}</span>
+      <div class="bars">${target?`<div class="tline" style="bottom:${target/mx*100}%"><span>${money0(target)}</span></div>`:''}${ds.map((d,i)=>`<div class="bcol" title="${dlabel(d)}: sales ${rm(sd[i])}, expenses ${rm(ed[i])}"><i class="s" style="height:${sd[i]/mx*100}%"></i><i class="e" style="height:${ed[i]/mx*100}%"></i></div>`).join('')}</div>
       <div class="xl">${ds.map((d,i)=>`<span>${(ds.length-1-i)%step===0?parse(d).getDate():''}</span>`).join('')}</div></div></div>`;
   }
+
+  // daily target progress for a single day
+  let goal='';
+  if(target&&a===b){
+    const pct=sales/target*100;
+    goal=`<div class="panel"><h3>Daily target</h3><div class="prog"><i style="width:${Math.min(100,pct)}%"></i></div>
+      <p class="note" style="margin-top:8px"><b>${rm(sales)}</b> of ${rm(target)} · ${Math.round(pct)}% · ${pct>=100?'Target reached':rm(target-sales)+' to go'}</p></div>`;
+  }
+
+  // best day of the week: average sales per open day
+  const [wa,wb]=ds.length>=14?[a,b]:[addDays(today(),-55),today()], byDate={};
+  S.orders.forEach(o=>{if(!o.voided&&o.date>=wa&&o.date<=wb)byDate[o.date]=(byDate[o.date]||0)+o.total});
+  const wsum=[0,0,0,0,0,0,0], wcnt=[0,0,0,0,0,0,0];
+  Object.entries(byDate).forEach(([d,v])=>{const w=parse(d).getDay();wsum[w]+=v;wcnt[w]++});
+  const worder=[1,2,3,4,5,6,0], wavg=worder.map(w=>wcnt[w]?wsum[w]/wcnt[w]:0), wmax=Math.max(1,...wavg), wbest=wavg.indexOf(Math.max(...wavg));
+  const week=`<div class="panel"><h3>Best day of the week · avg sales, ${ds.length>=14?'this period':'last 8 weeks'}</h3>
+    ${Object.keys(byDate).length?`<div class="chart"><span class="max">${money0(wmax)}</span>
+      <div class="bars" style="height:150px">${wavg.map((v,i)=>`<div class="bcol" title="${DOW_LONG[worder[i]]}: avg ${rm(v)}"><i class="s" style="height:${v/wmax*100}%;${i===wbest?'':'opacity:.45'}"></i></div>`).join('')}</div>
+      <div class="xl">${worder.map(w=>`<span>${DOW[w]}</span>`).join('')}</div></div>
+      <p class="note" style="margin-top:8px">Best: <b>${DOW_LONG[worder[wbest]]}</b>, about ${money0(wavg[wbest])} a day.</p>`:'<div class="empty">Not enough sales yet.</div>'}
+  </div>`;
+
+  // last 6 months
+  const months=[];for(let i=5;i>=0;i--){const d=parse(today());d.setDate(1);d.setMonth(d.getMonth()-i);months.push(d)}
+  let mrows=months.map(d=>{const k=dkey(d).slice(0,7),ms=k+'-01',me=k+'-31',t=totals(ms,me);return{d,k,...t}});
+  while(mrows.length>1&&!mrows[0].sales&&!mrows[0].cost)mrows.shift();
+  const monthly=`<div class="panel"><h3>Monthly profit</h3><div class="tablewrap"><table class="mt">
+    <thead><tr><th>Month</th><th>Sales</th><th>Expenses</th><th>Profit</th></tr></thead>
+    <tbody>${mrows.map((r,i)=>`<tr><td>${r.d.toLocaleDateString('en-MY',{month:'short',year:'numeric'})}${i===mrows.length-1?' <span class="lsub">so far</span>':''}</td><td>${money0(r.sales)}</td><td>${money0(r.cost)}</td><td class="${r.profit>=0?'pos-v':'neg-v'}"><b>${r.profit<0?'−':''}${money0(Math.abs(r.profit))}</b></td></tr>`).join('')}</tbody>
+  </table></div></div>`;
+
   const best=prods[0];
   m.innerHTML=`<div class="wrap">
-    <div class="bar"><h1 class="h1">Dashboard</h1><div class="chips">${chips}</div></div>
+    <div class="bar"><h1 class="h1">Dashboard</h1><button class="btn dark" data-act="xlsx">Export to Excel</button></div>
+    <div class="chips">${PERIODS.map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('')}</div>
     <div class="stats">
-      <div class="stat"><span>Sales</span><b>${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small></div>
-      <div class="stat"><span>Expenses</span><b>${rm(cost)}</b><small>${exps.length} entries</small></div>
-      <div class="stat"><span>Profit</span><b class="${profit>=0?'pos-v':'neg-v'}">${profit<0?'−':''}${rm(Math.abs(profit))}</b><small>${sales?Math.round(profit/sales*100)+'% of sales':'—'}</small></div>
-      <div class="stat"><span>Orders</span><b>${ords.length}</b><small>avg ${ords.length?rm(sales/ords.length):'—'}</small></div>
+      <div class="stat"><span>Sales</span><b>${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${trend(sales,P.sales,true)}</div>
+      <div class="stat"><span>Expenses</span><b>${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
+      <div class="stat"><span>Profit</span><b class="${profit>=0?'pos-v':'neg-v'}">${profit<0?'−':''}${rm(Math.abs(profit))}</b><small>${sales?Math.round(profit/sales*100)+'% of sales':'—'}</small>${trend(profit,P.profit,true)}</div>
+      <div class="stat"><span>Orders</span><b>${ords.length}</b><small>avg ${ords.length?rm(sales/ords.length):'—'}</small>${trend(ords.length,P.ords.length,true)}</div>
     </div>
+    ${goal}
     ${daily}
     <div class="two">
-      <div class="panel"><h3>By flavour${best?` · best seller: ${esc(best[1].name)}`:''}</h3>
-        ${prods.length?prods.map(([id,p])=>{const it=item(id);return`<div class="hrow"><span class="nm">${esc(p.name)}</span><span class="tr"><i style="width:${p.rev/maxRev*100}%;background:${esc(it?it.color:'var(--red)')}"></i></span><span class="v">${rm0(p.rev)}<small>${p.qty} sold</small></span></div>`}).join(''):'<div class="empty">No sales in this period.</div>'}
+      <div class="panel"><h3>By flavour${best?` · best seller: ${esc(best.name)}`:''}</h3>
+        ${prods.length?prods.map(p=>{const it=item(p.id);return`<div class="hrow"><span class="nm">${esc(p.name)}</span><span class="tr"><i style="width:${p.rev/maxRev*100}%;background:${esc(it?it.color:'var(--red)')}"></i></span><span class="v">${rm0(p.rev)}<small>${p.qty} sold</small></span></div>`}).join(''):'<div class="empty">No sales in this period.</div>'}
       </div>
       <div class="panel"><h3>Busy hours (orders)</h3>
         <div class="chart"><span class="max">${maxH}</span>
-        <div class="bars" style="height:150px">${hc.map((c,i)=>`<div class="bcol" title="${hours[i]}:00 – ${c} orders"><i class="s" style="height:${c/maxH*100}%"></i></div>`).join('')}</div>
-        <div class="xl">${hours.map(h=>`<span>${h%2===0?(h>12?h-12+'p':h+(h===12?'p':'a')):''}</span>`).join('')}</div></div>
+        <div class="bars" style="height:150px">${hc.map((c,i)=>`<div class="bcol" title="${hl(hours[i])}–${hl(hours[i]+1)}: ${c} orders"><i class="s" style="height:${c/maxH*100}%"></i></div>`).join('')}</div>
+        <div class="xl">${hours.map((h,i)=>`<span>${i%hstep===0?hl(h):''}</span>`).join('')}</div></div>
       </div>
     </div>
+    <div class="two">${week}${monthly}</div>
   </div>`;
 }
 
@@ -525,11 +616,11 @@ function vSettings(m){
         <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
           <button class="btn" data-act="backup">Back up everything</button>
           <button class="btn quiet" data-act="restore">Restore from backup</button>
-          <button class="btn dark" data-act="export" data-id="orders">Sales for Excel (CSV)</button>
-          <button class="btn dark" data-act="export" data-id="expenses">Expenses for Excel (CSV)</button>
+          <button class="btn dark" data-act="export">Excel report (all data)</button>
+          <div class="field"><label for="target">Daily sales target (RM)</label><input class="inp" type="number" inputmode="decimal" min="0" id="target" value="${S.target||''}" placeholder="Off"></div>
           <div class="field"><label for="lowAt">Warn when stock is at or below</label><input class="inp" type="number" min="0" id="lowAt" value="${S.lowAt}"></div>
         </div>
-        <p class="note" style="margin-top:10px"><b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Restore</b> puts it back on a new or reset device. CSV files are for reading in Excel or Google Sheets.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>
+        <p class="note" style="margin-top:10px"><b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Restore</b> puts it back on a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>
         <input type="file" id="restoreFile" hidden>
         <div class="chips" style="margin-top:12px">
           ${S.sample?'<button class="btn" data-act="clearsample">Clear sample data</button>':''}
@@ -574,10 +665,14 @@ function complete(){
   if(!lines.length)return;
   for(const l of lines){const it=item(l.itemId);if(it.stock&&it.qty<l.qty){toast(`Only ${it.qty} ${it.name} left`);return}}
   const ts=Date.now(),date=dkey(new Date(ts)),no=S.orders.filter(o=>o.date===date).length+1,total=lines.reduce((s,l)=>s+l.price*l.qty,0);
-  S.orders.push({id:uid(),no,ts,date,lines,total,by:role,voided:null});
+  const oid=uid();
+  S.orders.push({id:oid,no,ts,date,lines,total,by:role,voided:null});
   lines.forEach(l=>{const it=item(l.itemId);if(it.stock){it.qty-=l.qty;S.moves.push({ts,itemId:it.id,delta:-l.qty,reason:`Sold · order #${no}`})}});
-  cart={};save();render();toast(`Order #${no} saved · ${rm(total)}`);
+  cart={};lastOrderId=oid;clearTimeout(undoTimer);
+  undoTimer=setTimeout(()=>{if(view==='cashier'&&$('modal').hidden)render()},UNDO_MS+500);
+  save();render();
 }
+function canVoid(o){return !o.voided&&(role==='admin'||Date.now()-o.ts<=UNDO_MS)}
 function orderSheet(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
   openModal(`<h2>Order #${o.no}</h2>
@@ -585,7 +680,8 @@ function orderSheet(id){
     <div>${o.lines.map(l=>`<div class="line"><div><div class="lname">${esc(l.name)}</div><div class="lsub">${l.qty} × ${rm0(l.price)}</div></div><b>${rm(l.price*l.qty)}</b></div>`).join('')}</div>
     <div class="sum-row"><span>Total</span><div class="amt" style="font-size:40px">${rm(o.total)}</div></div>
     ${o.voided?`<p class="note"><span class="pill void">Voided</span> ${tm(o.voided.ts)} · ${esc(o.voided.reason)}</p>`:''}
-    <div class="acts"><button class="btn quiet" data-act="close">Close</button>${role==='admin'&&!o.voided?`<button class="btn" data-act="voidask" data-id="${o.id}">Void order</button>`:''}</div>`);
+    ${role==='staff'&&!o.voided?`<p class="note">${canVoid(o)?'You can cancel an order for 2 minutes after it is made.':'Only the admin can void this order now.'}</p>`:''}
+    <div class="acts"><button class="btn quiet" data-act="close">Close</button>${canVoid(o)?`<button class="btn" data-act="voidask" data-id="${o.id}">Void order</button>`:''}</div>`);
 }
 function voidSheet(id){
   const o=S.orders.find(x=>x.id===id);
@@ -595,6 +691,7 @@ function voidSheet(id){
 }
 function doVoid(id){
   const o=S.orders.find(x=>x.id===id),ts=Date.now();
+  if(!canVoid(o)){closeModal();render();toast('Only the admin can void orders older than 2 minutes');return}
   o.voided={ts,reason:$('vReason').value,by:role};
   o.lines.forEach(l=>{const it=item(l.itemId);if(it&&it.stock){it.qty+=l.qty;S.moves.push({ts,itemId:it.id,delta:l.qty,reason:`Void · order #${o.no}`})}});
   save();closeModal();render();toast(`Order #${o.no} voided`);
@@ -607,14 +704,58 @@ function saveFile(name,text,type){
   return Promise.resolve(download());
   function download(){const u=URL.createObjectURL(blob),el=document.createElement('a');el.href=u;el.download=name;document.body.appendChild(el);el.click();setTimeout(()=>{URL.revokeObjectURL(u);el.remove()},3000);return true}
 }
-function csv(kind){
-  const q=v=>{v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  let rows;
-  if(kind==='orders'){rows=[['Date','Time','Order','Item','Qty','Unit price (RM)','Line total (RM)','Served by','Status','Void reason']];
-    S.orders.slice().sort((a,b)=>a.ts-b.ts).forEach(o=>o.lines.forEach(l=>rows.push([o.date,tm(o.ts),o.no,l.name,l.qty,l.price.toFixed(2),(l.price*l.qty).toFixed(2),o.by,o.voided?'Voided':'Sold',o.voided?o.voided.reason:''])))}
-  else{rows=[['Date','Category','Amount (RM)','Note']];S.expenses.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>rows.push([e.date,e.cat,e.amount.toFixed(2),e.note||'']))}
-  if(rows.length<2){toast('Nothing to export yet');return}
-  saveFile(`kepokkaw-${kind==='orders'?'sales':'expenses'}-${today()}.csv`,'\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n'),'text/csv');
+function excel(a,b){
+  if(!window.KKXLSX){toast('Excel export is not available');return}
+  const ds=days(a,b), T=totals(a,b), allO=S.orders.filter(o=>o.date>=a&&o.date<=b).sort((x,y)=>x.ts-y.ts);
+  const qty=o=>o.lines.reduce((x,l)=>x+l.qty,0), portions=T.ords.reduce((s,o)=>s+qty(o),0), prods=itemTotals(T.ords);
+  const byCat={};T.exps.forEach(e=>byCat[e.cat]=(byCat[e.cat]||0)+e.amount);
+  const H=v=>({v,t:'h'}), M=v=>({v,t:'money'}), D=v=>({v,t:'date'}), B=v=>({v,t:'b'}), BM=v=>({v,t:'bm'}), BI=v=>({v,t:'bi'});
+  const summary=[[{v:'Kepokkaw sales report',t:'title'}],['Period',a===b?dlong(a):dlong(a)+' – '+dlong(b)],['Exported',dlong(today())+', '+tm(Date.now())],[],
+    [B('Sales'),BM(T.sales)],[B('Expenses'),BM(T.cost)],[B('Profit'),BM(T.profit)],
+    ['Orders',T.ords.length],['Voided orders',allO.length-T.ords.length],['Average order',M(T.ords.length?T.sales/T.ords.length:0)],['Items sold',portions],[],
+    [H('Item'),H('Qty sold'),H('Sales'),H('Share of sales')],...prods.map(p=>[p.name,p.qty,M(p.rev),{v:T.sales?p.rev/T.sales:0,t:'pct'}]),[],
+    [H('Expense category'),H('Amount')],...Object.entries(byCat).sort((x,y)=>y[1]-x[1]).map(([c,v])=>[c,M(v)])];
+  const daily=[[H('Date'),H('Day'),H('Orders'),H('Items'),H('Sales'),H('Expenses'),H('Profit')]];
+  ds.forEach(d=>{const o=T.ords.filter(x=>x.date===d),sv=o.reduce((s,x)=>s+x.total,0),ev=T.exps.filter(x=>x.date===d).reduce((s,x)=>s+x.amount,0);
+    daily.push([D(d),DOW[parse(d).getDay()],o.length,o.reduce((s,x)=>s+qty(x),0),M(sv),M(ev),M(sv-ev)])});
+  daily.push([B('Total'),'',BI(T.ords.length),BI(portions),BM(T.sales),BM(T.cost),BM(T.profit)]);
+  const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Served by'),H('Status'),H('Void reason')]];
+  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),o.by==='admin'?'Admin':'Staff',o.voided?'Voided':'Sold',o.voided?o.voided.reason:''])));
+  const expenses=[[H('Date'),H('Category'),H('Amount'),H('Note')]];
+  T.exps.slice().sort((x,y)=>x.date.localeCompare(y.date)||x.ts-y.ts).forEach(e=>expenses.push([D(e.date),e.cat,M(e.amount),e.note||'']));
+  const stock=[[H('Date'),H('Time'),H('Item'),H('Change'),H('Reason')]];
+  S.moves.filter(x=>{const d=dkey(new Date(x.ts));return d>=a&&d<=b}).sort((x,y)=>x.ts-y.ts).forEach(x=>{const it=item(x.itemId);stock.push([D(dkey(new Date(x.ts))),{v:x.ts,t:'time'},it?it.name:x.itemId,x.delta,x.reason])});
+  const bytes=KKXLSX.build([
+    {name:'Summary',cols:[26,30,14,16],rows:summary},
+    {name:'Daily',cols:[14,8,10,10,14,14,14],freeze:true,rows:daily},
+    {name:'Orders',cols:[14,11,8,18,6,12,12,11,9,24],freeze:true,rows:orders},
+    {name:'Expenses',cols:[14,20,14,32],freeze:true,rows:expenses},
+    {name:'Stock',cols:[14,11,16,9,28],freeze:true,rows:stock}]);
+  saveFile(`kepokkaw-${a===b?a:a+'-to-'+b}.xlsx`,bytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+function dayReport(date){
+  const all=S.orders.filter(o=>o.date===date), live=all.filter(o=>!o.voided), sales=live.reduce((s,o)=>s+o.total,0);
+  const menu=S.items.map(i=>i.id), prods=itemTotals(live).sort((x,y)=>(menu.indexOf(x.id)+1||99)-(menu.indexOf(y.id)+1||99));
+  const L=[`*KEPOKKAW* · ${parse(date).toLocaleDateString('en-MY',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}`,''];
+  L.push(`Orders: ${live.length}${all.length-live.length?` (${all.length-live.length} voided)`:''}`,`*Sales: ${rm(sales)}*`);
+  if(prods.length){L.push('','*Sold*');prods.forEach(p=>L.push(`• ${p.name} ×${p.qty} = ${rm(p.rev)}`));L.push(`Total items: ${prods.reduce((s,p)=>s+p.qty,0)}`)}
+  if(role==='admin'){
+    const ex=S.expenses.filter(e=>e.date===date), cost=ex.reduce((s,e)=>s+e.amount,0);
+    L.push('',`*Expenses: ${rm(cost)}*`);ex.forEach(e=>L.push(`• ${e.cat}${e.note?' ('+e.note+')':''} = ${rm(e.amount)}`));
+    L.push(`*Profit: ${rm(sales-cost)}*`);
+    if(S.target)L.push(`Target: ${rm(S.target)} (${Math.round(sales/S.target*100)}%)`);
+  }
+  const extra=[];
+  if(live.length){const c={};live.forEach(o=>{const h=new Date(o.ts).getHours();c[h]=(c[h]||0)+1});const [h,n]=Object.entries(c).sort((x,y)=>y[1]-x[1])[0];extra.push(`Busiest hour: ${hl(+h)}–${hl(+h+1)} (${n} orders)`)}
+  if(date===today())S.items.filter(i=>i.stock&&i.active).forEach(i=>extra.push(`${i.name} left: ${i.qty}`));
+  if(extra.length)L.push('',...extra);
+  L.push('',`Sent by ${role==='admin'?'Admin':'Staff'} at ${tm(Date.now())}`);
+  return L.join('\n');
+}
+function reportSheet(date){
+  openModal(`<h2>Day report</h2><p class="note">Check it, then tap Send and choose WhatsApp.</p>
+    <textarea id="repOut" readonly style="font-family:var(--body);font-size:14px;min-height:300px">${esc(dayReport(date))}</textarea>
+    <div class="acts"><button class="btn quiet" data-act="close">Close</button><button class="btn quiet" data-act="copyrep">Copy</button><button class="btn" data-act="sendrep">Send</button></div>`);
 }
 function backup(){
   const ts=Date.now(),body=JSON.stringify({app:'kepokkaw-pos',exported:ts,data:Object.assign({},S,{lastBackup:ts})});
@@ -677,7 +818,11 @@ document.addEventListener('click',e=>{
       if(!/^\d{4}$/.test(a)||!/^\d{4}$/.test(s)){toast('PINs must be 4 digits');break}
       if(a===s){toast('Admin and staff PINs must be different');break}
       S.pins={admin:a,staff:s};save();toast('PINs saved');break}
-    case 'export':csv(id);break;
+    case 'export':{const first=S.orders.map(o=>o.date).concat(S.expenses.map(e=>e.date)).sort()[0];excel(first&&first<today()?first:today(),today());break}
+    case 'xlsx':{const [a,b]=range(dashP);excel(a,b);break}
+    case 'report':reportSheet(role==='admin'&&ordDate?ordDate:today());break;
+    case 'sendrep':{const t=$('repOut').value;if(navigator.share)navigator.share({text:t}).catch(()=>{});else{navigator.clipboard&&navigator.clipboard.writeText(t).then(()=>toast('Copied. Paste it into WhatsApp'),()=>{});}break}
+    case 'copyrep':{const t=$('repOut');const fb=()=>{t.focus();t.select();toast('Selected. Copy it from the menu')};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t.value).then(()=>toast('Copied'),fb);else fb();break}
     case 'backup':backup();break;
     case 'restore':$('restoreFile').value='';$('restoreFile').click();break;
     case 'clearsample':ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;cart={};save();render();toast('Sample data cleared')});break;
@@ -689,6 +834,7 @@ document.addEventListener('change',e=>{
   if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0]);return}
   if(t.id==='ordDate'){ordDate=t.value&&t.value<=today()?t.value:today();render();return}
   if(t.id==='expMonth'){expMonth=t.value||today().slice(0,7);render();return}
+  if(t.id==='target'){const v=parseFloat(t.value);S.target=v>0?Math.round(v):0;save();toast(S.target?'Target saved':'Target turned off');return}
   if(t.id==='lowAt'){const v=parseInt(t.value,10);if(v>=0){S.lowAt=v;save();toast('Saved')}return}
   if(t.dataset.edit){
     const it=item(t.dataset.edit),f=t.dataset.f;

@@ -75,7 +75,7 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .tstock{font-size:13px;color:var(--muted);font-weight:600}
 .tstock.low{color:var(--warn)}
 .badge{position:absolute;top:12px;right:12px;min-width:42px;height:42px;border-radius:21px;background:var(--red);color:var(--on-red);font-family:var(--display);font-weight:800;font-size:24px;display:grid;place-items:center;padding:0 8px}
-.ticket{background:var(--surface);border-radius:18px;display:flex;flex-direction:column;min-height:0;box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.ticket{position:relative;background:var(--surface);border-radius:18px;display:flex;flex-direction:column;min-height:0;box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
 .ticket-head{display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 10px;border-bottom:1px dashed var(--line)}
 .ticket-head h2{margin:0;font-family:var(--display);font-style:italic;font-weight:800;font-size:24px;text-transform:uppercase}
 .ticket-head span{color:var(--muted);font-size:13px;font-weight:600}
@@ -200,6 +200,55 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 @keyframes sh{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 @media (prefers-reduced-motion: reduce){.tile{transition:none}.shake{animation:none}}
 
+/* motion: entrance animations use "backwards" fill so they never pin a transform after they finish */
+.fly{position:fixed;width:18px;height:18px;border-radius:50%;z-index:50;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.stamp{position:absolute;inset:0;display:grid;place-items:center;background:var(--surface);pointer-events:none;opacity:0;z-index:2}
+.stamp-in{display:grid;justify-items:center;gap:6px;text-align:center}
+.stamp-in b{font-family:var(--display);font-style:italic;font-weight:800;font-size:26px;text-transform:uppercase}
+.stamp-in small{color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.tick{width:68px;height:68px;border-radius:50%;background:var(--good);display:grid;place-items:center}
+.tick svg{width:36px;height:36px;stroke:var(--on-red);stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40;stroke-dashoffset:0}
+.amt{transform-origin:right center}
+.bcol i{transform-origin:bottom}
+.hrow .tr i,.prog i{transform-origin:left}
+@media (prefers-reduced-motion: no-preference){
+  .enter{animation:fadeUp .28s ease-out backwards}
+  .enter .tile{animation:fadeUp .38s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0)*45ms)}
+  .enter .stat{animation:fadeUp .4s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0)*60ms)}
+  .enter .bcol i{animation:growY .6s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(120ms + var(--i,0)*22ms)}
+  .enter .hrow .tr i{animation:growX .7s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(150ms + var(--i,0)*60ms)}
+  .enter .prog i{animation:growX .9s cubic-bezier(.2,.8,.2,1) .2s backwards}
+  .badge.pop{animation:pop .32s cubic-bezier(.3,1.6,.5,1)}
+  .step b.pop{animation:pop .3s cubic-bezier(.3,1.6,.5,1)}
+  .line.slide{animation:slideIn .28s cubic-bezier(.2,.8,.2,1) backwards}
+  .amt.bump{animation:bump .34s cubic-bezier(.3,1.6,.5,1) .36s}
+  .stamp{animation:stampBg 1.15s ease forwards}
+  .stamp .stamp-in{animation:stampIn 1.15s cubic-bezier(.2,.9,.3,1.25) forwards}
+  .stamp .tick svg{animation:draw .35s .15s ease-out backwards}
+  .undo.slide{animation:slideDown .3s cubic-bezier(.2,.8,.2,1) .95s backwards}
+  .modal.show{animation:fadeIn .18s ease-out}
+  .modal.show .sheet{animation:sheetUp .3s cubic-bezier(.2,.9,.3,1.05)}
+  .toast.in{animation:toastIn .28s cubic-bezier(.2,.9,.3,1.2)}
+  .pin.show .pin-box{animation:fadeUp .3s ease-out backwards}
+  .pin.out{animation:fadeOut .22s ease-in forwards}
+  .dots i.pop{animation:pop .25s cubic-bezier(.3,1.6,.5,1)}
+  .tabs button{transition:background-color .2s,color .2s}
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}}
+@keyframes fadeIn{from{opacity:0}}
+@keyframes fadeOut{to{opacity:0}}
+@keyframes growY{from{transform:scaleY(0)}}
+@keyframes growX{from{transform:scaleX(0)}}
+@keyframes pop{40%{transform:scale(1.35)}}
+@keyframes bump{40%{transform:scale(1.07)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(18px)}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}}
+@keyframes sheetUp{from{opacity:0;transform:translateY(28px) scale(.98)}}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,16px)}}
+@keyframes draw{from{stroke-dashoffset:40}}
+@keyframes stampBg{0%{opacity:0}12%{opacity:.97}78%{opacity:.97}100%{opacity:0}}
+@keyframes stampIn{0%{transform:scale(.6);opacity:0}18%{transform:scale(1.06);opacity:1}28%{transform:scale(1)}78%{transform:scale(1);opacity:1}100%{transform:scale(.96);opacity:0}}
+
 @media (max-width:860px){
   .pos{display:flex;flex-direction:column;gap:12px}
   .tiles{flex:1;min-height:0;overflow:auto;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -258,6 +307,8 @@ const VIEWS=[['cashier','Cashier'],['orders','Orders'],['dashboard','Dashboard']
 const STAFF_VIEWS=['cashier','orders','stock'];
 const UNDO_MS=120000;
 let lastOrderId=null, undoTimer=null;
+let fx={}, renderedView=null, prevTotal=0;
+const MOTION=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
 let S, role='admin', view='cashier', cart={}, dashP='7d', ordDate=null, expMonth=null, pinRole='staff', pinBuf='', pending=null;
 
 /* ---------- helpers ---------- */
@@ -358,17 +409,33 @@ function render(){
   $('sampleBar').hidden=!S.sample;
   const nb=role==='admin'&&needsBackup();$('backupBar').hidden=!nb;
   if(nb)$('backupBar').innerHTML=`<b>${S.lastBackup?'Last backup '+dlabel(dkey(new Date(S.lastBackup)))+'.':'No backup yet.'}</b> Save a copy of your sales in case this device is lost. <button class="ghost" data-act="backup" style="padding:4px 10px;margin-left:6px">Back up now</button>`;
-  const m=$('main');
+  const m=$('main'), entering=view!==renderedView||fx.enter;renderedView=view;
   ({cashier:vCashier,orders:vOrders,dashboard:vDash,expenses:vExpenses,stock:vStock,settings:vSettings})[view](m);
+  if(entering&&m.firstElementChild){m.firstElementChild.classList.add('enter');if(MOTION)countUp(m)}
+  fx={};
+}
+function countUp(root){
+  root.querySelectorAll('[data-n]').forEach(el=>{
+    const n=+el.dataset.n, f=el.dataset.fmt, fmt=v=>f==='int'?String(Math.round(v)):(v<0?'−':'')+rm(Math.abs(v)), t0=performance.now();
+    const step=t=>{const p=Math.min(1,(t-t0)/700), e=1-Math.pow(1-p,3);el.textContent=fmt(n*e);if(p<1)requestAnimationFrame(step)};
+    el.textContent=fmt(0);requestAnimationFrame(step);
+  });
+}
+function fly(r,color){
+  const to=document.querySelector('.ticket .amt');if(!MOTION||!to||!r||!document.body.animate)return;
+  const t=to.getBoundingClientRect(), d=document.createElement('div');
+  const x0=r.left+r.width/2-9, y0=r.top+r.height/2-9, dx=t.left+t.width/2-9-x0, dy=t.top+t.height/2-9-y0;
+  d.className='fly';d.style.background=color;d.style.left=x0+'px';d.style.top=y0+'px';document.body.appendChild(d);
+  d.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${dx*.5}px,${dy*.5-90}px) scale(1.2)`,offset:.45},{transform:`translate(${dx}px,${dy}px) scale(.35)`,opacity:.25}],{duration:540,easing:'cubic-bezier(.45,0,.25,1)'}).onfinish=()=>d.remove();
 }
 
 function vCashier(m){
   const items=S.items.filter(i=>i.active), t=today();
   const nToday=S.orders.filter(o=>o.date===t&&!o.voided).length;
-  const tiles=items.map(it=>{
+  const tiles=items.map((it,ti)=>{
     const q=cart[it.id]||0, out=it.stock&&it.qty<=0, low=it.stock&&it.qty<=S.lowAt;
-    return `<button class="tile ${q?'in':''} ${out?'out':''}" data-act="add" data-id="${it.id}" style="--sw:${esc(it.color||'#999')}" aria-label="Add ${esc(it.name)}">
-      ${q?`<span class="badge">${q}</span>`:''}
+    return `<button class="tile ${q?'in':''} ${out?'out':''}" data-act="add" data-id="${it.id}" style="--sw:${esc(it.color||'#999')};--i:${ti}" aria-label="Add ${esc(it.name)}">
+      ${q?`<span class="badge ${fx.pop===it.id?'pop':''}">${q}</span>`:''}
       <span class="sw"></span>
       <span class="tname">${esc(it.name)}</span>
       <span class="tmeta"><span class="tprice">${rm0(it.price)}</span>${it.stock?`<span class="tstock ${low?'low':''}">${it.qty} left</span>`:''}</span>
@@ -377,18 +444,20 @@ function vCashier(m){
   const total=lines.reduce((s,[id,q])=>s+item(id).price*q,0);
   const count=lines.reduce((s,[,q])=>s+q,0);
   const lo=lastOrderId&&S.orders.find(o=>o.id===lastOrderId), showUndo=lo&&!lo.voided&&Date.now()-lo.ts<=UNDO_MS;
+  const bump=total!==prevTotal&&!fx.saved;prevTotal=total;
+  const stamp=fx.saved&&MOTION?`<div class="stamp"><div class="stamp-in"><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><b>Order #${fx.saved.no} saved</b><small>${rm(fx.saved.total)}</small></div></div>`:'';
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
-    <aside class="ticket">
+    <aside class="ticket">${stamp}
       <div class="ticket-head"><h2>Order #${S.orders.filter(o=>o.date===t).length+1}</h2><span>${nToday} orders today</span></div>
-      ${showUndo?`<div class="undo"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
-      <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line">
+      ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
+      <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line ${fx.pop===id&&fx.newLine?'slide':''}">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
-          <div class="step"><button data-act="dec" data-id="${id}" aria-label="One less">−</button><b>${q}</b><button data-act="add" data-id="${id}" aria-label="One more">+</button></div>
+          <div class="step"><button data-act="dec" data-id="${id}" aria-label="One less">−</button><b class="${fx.pop===id&&!fx.newLine?'pop':''}">${q}</b><button data-act="add" data-id="${id}" aria-label="One more">+</button></div>
         </div>`}).join(''):'<div class="empty">Tap a flavour to start the order.</div>'}</div>
       <div class="sum">
         <div class="sum-row"><span>${count} item${count===1?'':'s'}</span>${lines.length?'<button class="ghost" data-act="clear">Clear</button>':''}</div>
-        <div class="sum-row"><span>Total</span><div class="amt">${rm(total)}</div></div>
+        <div class="sum-row"><span>Total</span><div class="amt ${bump?'bump':''}">${rm(total)}</div></div>
         <button class="go" data-act="complete" ${lines.length?'':'disabled'}>Complete order</button>
       </div>
     </aside>
@@ -469,7 +538,7 @@ function vDash(m){
     daily=`<div class="panel"><h3>Sales vs expenses by day${target?` · target hit on ${hit} of ${open} open days`:''}</h3>
       <div class="legend"><span><i style="background:var(--red)"></i>Sales</span><span><i style="background:var(--exp)"></i>Expenses</span>${target?'<span><i style="background:transparent;border-top:2px dashed var(--ink);border-radius:0;height:0;vertical-align:3px"></i>Daily target</span>':''}</div>
       <div class="chart"><span class="max">${money0(mx)}</span>
-      <div class="bars">${target?`<div class="tline" style="bottom:${target/mx*100}%"><span>${money0(target)}</span></div>`:''}${ds.map((d,i)=>`<div class="bcol" title="${dlabel(d)}: sales ${rm(sd[i])}, expenses ${rm(ed[i])}"><i class="s" style="height:${sd[i]/mx*100}%"></i><i class="e" style="height:${ed[i]/mx*100}%"></i></div>`).join('')}</div>
+      <div class="bars">${target?`<div class="tline" style="bottom:${target/mx*100}%"><span>${money0(target)}</span></div>`:''}${ds.map((d,i)=>`<div class="bcol" style="--i:${i}" title="${dlabel(d)}: sales ${rm(sd[i])}, expenses ${rm(ed[i])}"><i class="s" style="height:${sd[i]/mx*100}%"></i><i class="e" style="height:${ed[i]/mx*100}%"></i></div>`).join('')}</div>
       <div class="xl">${ds.map((d,i)=>`<span>${(ds.length-1-i)%step===0?parse(d).getDate():''}</span>`).join('')}</div></div></div>`;
   }
 
@@ -489,7 +558,7 @@ function vDash(m){
   const worder=[1,2,3,4,5,6,0], wavg=worder.map(w=>wcnt[w]?wsum[w]/wcnt[w]:0), wmax=Math.max(1,...wavg), wbest=wavg.indexOf(Math.max(...wavg));
   const week=`<div class="panel"><h3>Best day of the week · avg sales, ${ds.length>=14?'this period':'last 8 weeks'}</h3>
     ${Object.keys(byDate).length?`<div class="chart"><span class="max">${money0(wmax)}</span>
-      <div class="bars" style="height:150px">${wavg.map((v,i)=>`<div class="bcol" title="${DOW_LONG[worder[i]]}: avg ${rm(v)}"><i class="s" style="height:${v/wmax*100}%;${i===wbest?'':'opacity:.45'}"></i></div>`).join('')}</div>
+      <div class="bars" style="height:150px">${wavg.map((v,i)=>`<div class="bcol" style="--i:${i}" title="${DOW_LONG[worder[i]]}: avg ${rm(v)}"><i class="s" style="height:${v/wmax*100}%;${i===wbest?'':'opacity:.45'}"></i></div>`).join('')}</div>
       <div class="xl">${worder.map(w=>`<span>${DOW[w]}</span>`).join('')}</div></div>
       <p class="note" style="margin-top:8px">Best: <b>${DOW_LONG[worder[wbest]]}</b>, about ${money0(wavg[wbest])} a day.</p>`:'<div class="empty">Not enough sales yet.</div>'}
   </div>`;
@@ -508,20 +577,20 @@ function vDash(m){
     <div class="bar"><h1 class="h1">Dashboard</h1><button class="btn dark" data-act="xlsx">Export to Excel</button></div>
     <div class="chips">${PERIODS.map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('')}</div>
     <div class="stats">
-      <div class="stat"><span>Sales</span><b>${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${trend(sales,P.sales,true)}</div>
-      <div class="stat"><span>Expenses</span><b>${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
-      <div class="stat"><span>Profit</span><b class="${profit>=0?'pos-v':'neg-v'}">${profit<0?'−':''}${rm(Math.abs(profit))}</b><small>${sales?Math.round(profit/sales*100)+'% of sales':'—'}</small>${trend(profit,P.profit,true)}</div>
-      <div class="stat"><span>Orders</span><b>${ords.length}</b><small>avg ${ords.length?rm(sales/ords.length):'—'}</small>${trend(ords.length,P.ords.length,true)}</div>
+      <div class="stat" style="--i:0"><span>Sales</span><b data-n="${sales}" data-fmt="rm">${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${trend(sales,P.sales,true)}</div>
+      <div class="stat" style="--i:1"><span>Expenses</span><b data-n="${cost}" data-fmt="rm">${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
+      <div class="stat" style="--i:2"><span>Profit</span><b class="${profit>=0?'pos-v':'neg-v'}" data-n="${profit}" data-fmt="rm">${profit<0?'−':''}${rm(Math.abs(profit))}</b><small>${sales?Math.round(profit/sales*100)+'% of sales':'—'}</small>${trend(profit,P.profit,true)}</div>
+      <div class="stat" style="--i:3"><span>Orders</span><b data-n="${ords.length}" data-fmt="int">${ords.length}</b><small>avg ${ords.length?rm(sales/ords.length):'—'}</small>${trend(ords.length,P.ords.length,true)}</div>
     </div>
     ${goal}
     ${daily}
     <div class="two">
       <div class="panel"><h3>By flavour${best?` · best seller: ${esc(best.name)}`:''}</h3>
-        ${prods.length?prods.map(p=>{const it=item(p.id);return`<div class="hrow"><span class="nm">${esc(p.name)}</span><span class="tr"><i style="width:${p.rev/maxRev*100}%;background:${esc(it?it.color:'var(--red)')}"></i></span><span class="v">${rm0(p.rev)}<small>${p.qty} sold</small></span></div>`}).join(''):'<div class="empty">No sales in this period.</div>'}
+        ${prods.length?prods.map((p,pi)=>{const it=item(p.id);return`<div class="hrow" style="--i:${pi}"><span class="nm">${esc(p.name)}</span><span class="tr"><i style="width:${p.rev/maxRev*100}%;background:${esc(it?it.color:'var(--red)')}"></i></span><span class="v">${rm0(p.rev)}<small>${p.qty} sold</small></span></div>`}).join(''):'<div class="empty">No sales in this period.</div>'}
       </div>
       <div class="panel"><h3>Busy hours (orders)</h3>
         <div class="chart"><span class="max">${maxH}</span>
-        <div class="bars" style="height:150px">${hc.map((c,i)=>`<div class="bcol" title="${hl(hours[i])}–${hl(hours[i]+1)}: ${c} orders"><i class="s" style="height:${c/maxH*100}%"></i></div>`).join('')}</div>
+        <div class="bars" style="height:150px">${hc.map((c,i)=>`<div class="bcol" style="--i:${i}" title="${hl(hours[i])}–${hl(hours[i]+1)}: ${c} orders"><i class="s" style="height:${c/maxH*100}%"></i></div>`).join('')}</div>
         <div class="xl">${hours.map((h,i)=>`<span>${i%hstep===0?hl(h):''}</span>`).join('')}</div></div>
       </div>
     </div>
@@ -632,33 +701,36 @@ function vSettings(m){
 }
 
 /* ---------- modal / toast / pin ---------- */
-function openModal(html){$('sheet').innerHTML=html;$('modal').hidden=false}
+function restart(el,cls){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls)}
+function openModal(html){const md=$('modal'),was=md.hidden;$('sheet').innerHTML=html;md.hidden=false;if(was)restart(md,'show')}
 function closeModal(){$('modal').hidden=true;pending=null}
 function ask(title,body,yes,fn){pending=fn;openModal(`<h2>${title}</h2><p class="note">${body}</p><div class="acts"><button class="btn quiet" data-act="close">Cancel</button><button class="btn" data-act="yes">${yes}</button></div>`)}
-let tt;function toast(t){const e=$('toast');e.textContent=t;e.hidden=false;clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,2400)}
-function showPin(){pinBuf='';$('pin').hidden=false;drawPin()}
-function drawPin(){
+let tt;function toast(t){const e=$('toast');e.textContent=t;e.hidden=false;restart(e,'in');clearTimeout(tt);tt=setTimeout(()=>e.hidden=true,2400)}
+function showPin(){pinBuf='';const p=$('pin');p.classList.remove('out');p.hidden=false;drawPin();restart(p,'show')}
+function drawPin(pop){
   $('pin').innerHTML=`<div class="pin-box">
     <div class="brand">Kepok<br>Kaw</div>
     <div class="pin-roles"><button class="${pinRole==='staff'?'on':''}" data-act="prole" data-id="staff">Staff</button><button class="${pinRole==='admin'?'on':''}" data-act="prole" data-id="admin">Admin</button></div>
-    <div class="dots" id="dots">${[0,1,2,3].map(i=>`<i class="${i<pinBuf.length?'f':''}"></i>`).join('')}</div>
+    <div class="dots" id="dots">${[0,1,2,3].map(i=>`<i class="${i<pinBuf.length?'f':''} ${pop&&i===pinBuf.length-1?'pop':''}"></i>`).join('')}</div>
     <div class="keys">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="pk" data-id="${n}">${n}</button>`).join('')}<button class="t" data-act="pc">Clear</button><button data-act="pk" data-id="0">0</button><button class="t" data-act="pb">Delete</button></div>
     ${S.pins.admin==='1234'&&S.pins.staff==='0000'?'<div class="pin-hint">Default PINs: staff 0000 · admin 1234. Change them in Settings.</div>':''}
   </div>`;
 }
 function pinKey(d){
-  if(pinBuf.length>=4)return;pinBuf+=d;drawPin();
+  if(pinBuf.length>=4)return;pinBuf+=d;drawPin(true);
   if(pinBuf.length===4){
-    if(pinBuf===S.pins[pinRole]){role=pinRole;try{localStorage.setItem(LS_ROLE,role)}catch(e){}$('pin').hidden=true;cart={};view='cashier';render();toast(`Signed in as ${role==='admin'?'Admin':'Staff'}`)}
+    if(pinBuf===S.pins[pinRole]){role=pinRole;try{localStorage.setItem(LS_ROLE,role)}catch(e){}const p=$('pin');if(MOTION){p.classList.add('out');setTimeout(()=>{p.hidden=true;p.classList.remove('out')},220)}else p.hidden=true;cart={};view='cashier';render();toast(`Signed in as ${role==='admin'?'Admin':'Staff'}`)}
     else{const d=$('dots');d.classList.add('shake');setTimeout(()=>{pinBuf='';drawPin()},350)}
   }
 }
 
 /* ---------- actions ---------- */
-function addToCart(id){
+function addToCart(id,src){
   const it=item(id),q=(cart[id]||0)+1;
   if(it.stock&&q>it.qty){toast(it.qty?`Only ${it.qty} ${it.name} left`:`${it.name} is out of stock`);return}
-  cart[id]=q;render();
+  const from=src&&src.classList.contains('tile')?src.querySelector('.sw').getBoundingClientRect():null;
+  fx.pop=id;fx.newLine=!cart[id];cart[id]=q;render();
+  if(from)fly(from,it.color||'#999');
 }
 function complete(){
   const lines=Object.entries(cart).filter(([,q])=>q>0).map(([id,qty])=>{const it=item(id);return{itemId:id,name:it.name,price:it.price,qty}});
@@ -670,7 +742,7 @@ function complete(){
   lines.forEach(l=>{const it=item(l.itemId);if(it.stock){it.qty-=l.qty;S.moves.push({ts,itemId:it.id,delta:-l.qty,reason:`Sold · order #${no}`})}});
   cart={};lastOrderId=oid;clearTimeout(undoTimer);
   undoTimer=setTimeout(()=>{if(view==='cashier'&&$('modal').hidden)render()},UNDO_MS+500);
-  save();render();
+  fx.saved={no,total};save();render();
 }
 function canVoid(o){return !o.voided&&(role==='admin'||Date.now()-o.ts<=UNDO_MS)}
 function orderSheet(id){
@@ -778,7 +850,7 @@ document.addEventListener('click',e=>{
   const id=b.dataset.id;
   switch(b.dataset.act){
     case 'view':view=id;render();$('main').scrollTop=0;break;
-    case 'add':addToCart(id);break;
+    case 'add':addToCart(id,b);break;
     case 'dec':cart[id]=(cart[id]||0)-1;if(cart[id]<=0)delete cart[id];render();break;
     case 'clear':cart={};render();break;
     case 'complete':complete();break;
@@ -786,7 +858,7 @@ document.addEventListener('click',e=>{
     case 'voidask':voidSheet(id);break;
     case 'void':doVoid(id);break;
     case 'oday':ordDate=addDays(ordDate,+id);if(ordDate>today())ordDate=today();render();break;
-    case 'dash':dashP=id;render();break;
+    case 'dash':dashP=id;fx.enter=true;render();break;
     case 'close':closeModal();break;
     case 'yes':{const f=pending;closeModal();f&&f();break}
     case 'lock':pinRole=role==='admin'?'staff':'admin';showPin();break;

@@ -307,6 +307,14 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
   .cstep.done .cnum{animation:pop .3s cubic-bezier(.3,1.6,.5,1)}
 }
 @keyframes drawLine{from{stroke-dashoffset:1200}}
+/* dashboard runs each animation 0.2s longer than the other screens */
+.enter.dash{animation-duration:.48s}
+.enter.dash .stat{animation-duration:.6s}
+.enter.dash .bcol i{animation-duration:.8s}
+.enter.dash .hrow .tr i{animation-duration:.9s}
+.enter.dash .prog i{animation-duration:1.1s}
+.enter.dash .cal-d i{animation-duration:.7s}
+.enter.dash .trend-svg polyline{animation-duration:1.3s}
 
 @media (max-width:860px){
   .pos{display:flex;flex-direction:column;gap:12px}
@@ -488,7 +496,7 @@ function render(){
 function countUp(root){
   root.querySelectorAll('[data-n]').forEach(el=>{
     const n=+el.dataset.n, f=el.dataset.fmt, fmt=v=>f==='int'?String(Math.round(v)):(v<0?'−':'')+rm(Math.abs(v)), t0=performance.now();
-    const step=t=>{const p=Math.min(1,(t-t0)/700), e=1-Math.pow(1-p,3);el.textContent=fmt(n*e);if(p<1)requestAnimationFrame(step)};
+    const step=t=>{const p=Math.min(1,(t-t0)/900), e=1-Math.pow(1-p,3);el.textContent=fmt(n*e);if(p<1)requestAnimationFrame(step)};
     el.textContent=fmt(0);requestAnimationFrame(step);
   });
 }
@@ -646,7 +654,7 @@ function vDash(m){
   </table></div></div>`;
 
   const best=prods[0];
-  m.innerHTML=`<div class="wrap">
+  m.innerHTML=`<div class="wrap dash">
     <div class="bar"><h1 class="h1">Dashboard</h1><div class="chips">
       <button class="btn quiet" data-act="sumshare">Share summary</button>
       <button class="btn quiet" data-act="pdf">PDF</button>

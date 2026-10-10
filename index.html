@@ -147,6 +147,12 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .mt td{text-align:right;padding:8px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
 .mt th:first-child,.mt td:first-child{text-align:left}
 .mt tr:last-child td{border-bottom:0}
+.remark{padding:8px 16px;border-top:1px dashed var(--line);display:grid;gap:8px}
+.remark .inp{height:42px}
+.linkbtn{background:none;border:0;color:var(--red);font-weight:700;padding:2px 0;text-align:left;font-size:14px}
+.rchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chip.sm{padding:6px 10px;font-size:13px;white-space:nowrap}
+.onote{display:block;font-style:italic;color:var(--ink);opacity:.85;white-space:normal}
 .undo{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 16px;background:var(--surface-2);border-bottom:1px solid var(--line);font-size:14px;font-weight:600}
 .undo .ghost{padding:6px 14px;border-color:var(--red);color:var(--red);background:var(--surface)}
 
@@ -306,6 +312,8 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
   .pos{display:flex;flex-direction:column;gap:12px}
   .tiles{flex:1;min-height:0;overflow:auto;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .ticket{flex:none;max-height:52%}
+  .ticket.has-remark{max-height:66%}
+  .ticket.has-remark .lines{min-height:58px}
   .lines{min-height:0}
   .lines .empty{padding:14px 8px}
   .two{grid-template-columns:1fr}
@@ -362,6 +370,9 @@ const VIEWS=[['cashier','Cashier'],['orders','Orders'],['dashboard','Dashboard']
 const STAFF_VIEWS=['cashier','orders','stock'];
 const UNDO_MS=120000;
 let lastOrderId=null, undoTimer=null;
+const REMARKS=['Takeaway','Extra sauce','No sauce','Sauce separate','Less spicy','Extra spicy'];
+let cartNote='', remarkOpen=false;
+const noteParts=n=>n.split(',').map(x=>x.trim()).filter(Boolean);
 let fx={}, renderedView=null, prevTotal=0;
 const MOTION=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
 let S, role='admin', view='cashier', cart={}, dashP='7d', ordDate=null, expMonth=null, pinRole='staff', pinBuf='', pending=null;
@@ -450,6 +461,7 @@ function seed(){
       const lines=Object.entries(o.q).map(([id,qty])=>{const it=s.items.find(x=>x.id===id);return{itemId:id,name:it.name,price:it.price,qty}});
       no++;
       const ord={id:uid()+no+day,no,ts:o.ts,date:day,lines,total:lines.reduce((a,l)=>a+l.price*l.qty,0),by:r()<.7?'staff':'admin',voided:null};
+      if(r()<.12)ord.note=pick(REMARKS,[5,3,3,2,2,1]);
       if(o.q.frz){frz.qty-=1;s.moves.push({ts:o.ts,itemId:'frz',delta:-1,reason:`Sold · order #${no}`})}
       s.orders.push(ord);
     });
@@ -507,13 +519,15 @@ function vCashier(m){
   const stamp=fx.saved&&MOTION?`<div class="stamp"><div class="stamp-in"><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><b>Order #${fx.saved.no} saved</b><small>${rm(fx.saved.total)}</small></div></div>`:'';
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
-    <aside class="ticket">${stamp}
+    <aside class="ticket ${lines.length&&(remarkOpen||cartNote)?'has-remark':''}">${stamp}
       <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${nToday} orders today</span></div>
       ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
       <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line ${fx.pop===id&&fx.newLine?'slide':''}">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
           <div class="step"><button data-act="dec" data-id="${id}" aria-label="One less">−</button><b class="${fx.pop===id&&!fx.newLine?'pop':''}">${q}</b><button data-act="add" data-id="${id}" aria-label="One more">+</button></div>
         </div>`}).join(''):'<div class="empty">Tap a flavour to start the order.</div>'}</div>
+      ${lines.length?`<div class="remark">${remarkOpen||cartNote?`<input class="inp" id="cartNote" placeholder="Remark, e.g. no sauce" value="${esc(cartNote)}" maxlength="120" autocomplete="off" aria-label="Remark for this order">
+        <div class="rchips">${REMARKS.map(r=>`<button class="chip sm ${noteParts(cartNote).includes(r)?'on':''}" data-act="rchip" data-id="${r}">${r}</button>`).join('')}</div>`:'<button class="linkbtn" data-act="remark">+ Add remark</button>'}</div>`:''}
       <div class="sum">
         <div class="sum-row"><span>${count} item${count===1?'':'s'}</span>${lines.length?'<button class="ghost" data-act="clear">Clear</button>':''}</div>
         <div class="sum-row"><span>Total</span><div class="amt ${bump?'bump':''}">${rm(total)}</div></div>
@@ -540,7 +554,7 @@ function vOrders(m){
     </div>
     <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${o.id}">
         <span class="no">#${o.no}</span>
-        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${o.by==='admin'?'Admin':'Staff'}</small> ${o.voided?'<span class="pill void">Voided</span>':''}</span>
+        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${o.by==='admin'?'Admin':'Staff'}</small> ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
         <span class="r">${rm(o.total)}</span></button>`).join(''):'<div class="empty">No orders on this day.</div>'}</div></div>
   </div>`;
 }
@@ -992,20 +1006,23 @@ function complete(){
   for(const l of lines){const it=item(l.itemId);if(it.stock&&it.qty<l.qty){toast(`Only ${it.qty} ${it.name} left`);return}}
   const ts=Date.now(),date=bdate(ts),no=nextNo(date),total=lines.reduce((s,l)=>s+l.price*l.qty,0);
   const oid=uid();
-  S.orders.push({id:oid,no,ts,date,lines,total,by:role,voided:null});
+  const note=cartNote.trim();
+  S.orders.push(Object.assign({id:oid,no,ts,date,lines,total,by:role,voided:null},note?{note}:{}));
   lines.forEach(l=>{const it=item(l.itemId);if(it.stock){it.qty-=l.qty;S.moves.push({ts,itemId:it.id,delta:-l.qty,reason:`Sold · order #${no}`})}});
-  cart={};lastOrderId=oid;clearTimeout(undoTimer);
+  cart={};cartNote='';remarkOpen=false;lastOrderId=oid;clearTimeout(undoTimer);
   undoTimer=setTimeout(()=>{if(view==='cashier'&&$('modal').hidden)render()},UNDO_MS+500);
   fx.saved={no,total};save();render();
 }
 function nextNo(d){return S.orders.reduce((m,o)=>o.date===d&&o.no>m?o.no:m,0)+1}
 function canVoid(o){return !o.voided&&(role==='admin'||Date.now()-o.ts<=UNDO_MS)}
+function canNote(o){return role==='admin'||o.date===today()}
 function orderSheet(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
   openModal(`<h2>Order #${o.no}</h2>
     <p class="note">${dlabel(o.date)}, ${tm(o.ts)} · served by ${o.by==='admin'?'Admin':'Staff'}</p>
     <div>${o.lines.map(l=>`<div class="line"><div><div class="lname">${esc(l.name)}</div><div class="lsub">${l.qty} × ${rm0(l.price)}</div></div><b>${rm(l.price*l.qty)}</b></div>`).join('')}</div>
     <div class="sum-row"><span>Total</span><div class="amt" style="font-size:40px">${rm(o.total)}</div></div>
+    <div class="field"><label for="noteEdit">Remark</label><input class="inp" id="noteEdit" data-id="${o.id}" value="${esc(o.note||'')}" placeholder="${canNote(o)?'Add a remark':'No remark'}" maxlength="120" autocomplete="off" ${canNote(o)?'':'readonly'}></div>
     ${o.voided?`<p class="note"><span class="pill void">Voided</span> ${tm(o.voided.ts)} · ${esc(o.voided.reason)}</p>`:''}
     ${role==='staff'&&!o.voided?`<p class="note">${canVoid(o)?'You can cancel an order for 2 minutes after it is made.':'Only the admin can void this order now.'}</p>`:''}
     <div class="acts">${role==='admin'?`<button class="btn danger" data-act="delask" data-id="${o.id}" style="margin-right:auto">Delete</button>`:''}<button class="btn quiet" data-act="close">Close</button>${canVoid(o)?`<button class="btn" data-act="voidask" data-id="${o.id}">Void order</button>`:''}</div>`);
@@ -1072,8 +1089,8 @@ function excel(a,b){
   ds.forEach(d=>{const o=T.ords.filter(x=>x.date===d),sv=o.reduce((s,x)=>s+x.total,0),ev=T.exps.filter(x=>x.date===d).reduce((s,x)=>s+x.amount,0);
     daily.push([D(d),DOW[parse(d).getDay()],o.length,o.reduce((s,x)=>s+qty(x),0),M(sv),M(ev),M(sv-ev)])});
   daily.push([B('Total'),'',BI(T.ords.length),BI(portions),BM(T.sales),BM(T.cost),BM(T.profit)]);
-  const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Served by'),H('Status'),H('Void reason')]];
-  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),o.by==='admin'?'Admin':'Staff',o.voided?'Voided':'Sold',o.voided?o.voided.reason:''])));
+  const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Served by'),H('Status'),H('Void reason'),H('Remark')]];
+  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),o.by==='admin'?'Admin':'Staff',o.voided?'Voided':'Sold',o.voided?o.voided.reason:'',o.note||''])));
   const expenses=[[H('Date'),H('Category'),H('Amount'),H('Note')]];
   T.exps.slice().sort((x,y)=>x.date.localeCompare(y.date)||x.ts-y.ts).forEach(e=>expenses.push([D(e.date),e.cat,M(e.amount),e.note||'']));
   const stock=[[H('Date'),H('Time'),H('Item'),H('Change'),H('Reason')]];
@@ -1083,7 +1100,7 @@ function excel(a,b){
   const bytes=KKXLSX.build([
     {name:'Summary',cols:[26,30,14,16],rows:summary},
     {name:'Daily',cols:[14,8,10,10,14,14,14],freeze:true,rows:daily},
-    {name:'Orders',cols:[14,11,8,18,6,12,12,11,9,24],freeze:true,rows:orders},
+    {name:'Orders',cols:[14,11,8,18,6,12,12,11,9,24,28],freeze:true,rows:orders},
     {name:'Expenses',cols:[14,20,14,32],freeze:true,rows:expenses},
     {name:'Stock',cols:[14,11,16,9,28],freeze:true,rows:stock},
     {name:'Activity',cols:[14,11,9,22,52],freeze:true,rows:act}]);
@@ -1132,7 +1149,9 @@ document.addEventListener('click',e=>{
     case 'view':view=id;render();$('main').scrollTop=0;break;
     case 'add':addToCart(id,b);break;
     case 'dec':cart[id]=(cart[id]||0)-1;if(cart[id]<=0)delete cart[id];render();break;
-    case 'clear':cart={};render();break;
+    case 'remark':remarkOpen=true;render();setTimeout(()=>{const i=$('cartNote');i&&i.focus()},50);break;
+    case 'rchip':{const p=noteParts(cartNote),i=p.indexOf(id);if(i>=0)p.splice(i,1);else p.push(id);cartNote=p.join(', ');render();break}
+    case 'clear':cart={};cartNote='';remarkOpen=false;render();break;
     case 'complete':complete();break;
     case 'order':orderSheet(id);break;
     case 'voidask':voidSheet(id);break;
@@ -1202,10 +1221,16 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='cartNote'){cartNote=t.value;return}
   if(t.id==='delConfirm'){const b=$('delBtn');if(b)b.disabled=t.value.trim()!==t.dataset.no}
 });
 document.addEventListener('change',e=>{
   const t=e.target;
+  if(t.id==='noteEdit'){
+    const o=S.orders.find(x=>x.id===t.dataset.id);if(!o||!canNote(o))return;
+    const old=o.note||'',v=t.value.trim();if(v===old)return;
+    if(v)o.note=v;else delete o.note;
+    logA('Edited remark','#'+o.no+' ('+dlabel(o.date)+'): '+(old||'none')+' → '+(v||'none'));save();render();toast('Remark saved');return}
   if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0]);return}
   if(t.id==='ordDate'){ordDate=t.value&&t.value<=today()?t.value:today();render();return}
   if(t.id==='expMonth'){expMonth=t.value||today().slice(0,7);render();return}

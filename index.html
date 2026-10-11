@@ -220,6 +220,17 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .keys button{height:80px;border-radius:50%;border:0;background:var(--red-deep);color:var(--on-red);font-family:var(--display);font-weight:700;font-size:32px}
 .keys button.t{background:transparent;font-size:16px;font-family:var(--body)}
 .pin-hint{font-size:13px;opacity:.85}
+.gate{text-align:center}
+.gate .pin-hint{font-size:15px;line-height:1.45;opacity:.95;margin:0}
+.gate .pin-hint b{font-weight:700}
+.gate-form{display:grid;gap:10px;width:100%}
+.gate-form h2{margin:0 0 4px;font-family:var(--display);font-style:italic;font-weight:800;font-size:28px;text-transform:uppercase}
+.gate .inp{background:#FFFFFF;color:#1B1413;border:0;font-size:16px}
+.gate .btn{background:var(--on-red);color:var(--red);height:52px;font-size:17px}
+.gate .btn:disabled{opacity:.6}
+.gate .linkbtn{color:var(--on-red);text-align:center;text-decoration:underline;font-weight:600}
+.gate-msg{min-height:1.2em;margin:0;font-size:14px;font-weight:600}
+
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;z-index:40;max-width:calc(100% - 32px)}
 .shake{animation:sh .3s}
 @keyframes sh{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
@@ -489,6 +500,7 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
   <div class="sample upd" id="updateBar" hidden><span><b>New version ready.</b> Reload to start using it.</span><button class="ghost" data-act="reload">Reload</button></div>
   <div class="sample" id="sampleBar" hidden><b>Sample data.</b> <span class="long">These are made-up sales from the last 14 days, so you can try the dashboard. Clear them in Settings before you use it for real.</span><span class="short">Made-up sales. Clear them in Settings before real use.</span></div>
   <div class="sample" id="backupBar" hidden></div>
+  <div class="sample" id="syncBar" hidden></div>
   <main id="main"></main>
   <nav class="btabs" id="btabs" aria-label="Screens"></nav>
 </div>
@@ -498,6 +510,7 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 
 <script src="xlsx.js"></script>
 <script src="pdf.js"></script>
+<script src="firebase-config.js"></script>
 <script>
 (function(){
 const LS='kepokkaw-pos-v1', LS_ROLE='kepokkaw-pos-role', LS_THEME='kepokkaw-pos-theme';
@@ -512,6 +525,9 @@ const noteParts=n=>n.split(',').map(x=>x.trim()).filter(Boolean);
 let fx={}, renderedView=null, prevTotal=0;
 const MOTION=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
 let S, role='admin', view='cashier', cart={}, dashP='7d', ordDate=null, expMonth=null, pinRole='staff', pinBuf='', pending=null;
+// Cloud sync is on when firebase-config.js holds a config. Then accounts replace PINs.
+const CLOUD=!!window.KEPOKKAW_FIREBASE;
+let cloud=null, me=null, users=[], sync={pending:0,online:true}, cloudReady=false;
 
 /* ---------- helpers ---------- */
 const $=id=>document.getElementById(id);
@@ -532,6 +548,8 @@ const tm=ts=>new Date(ts).toLocaleTimeString('en-MY',{hour:'numeric',minute:'2-d
 const dlabel=k=>parse(k).toLocaleDateString('en-MY',{weekday:'short',day:'numeric',month:'short'});
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const item=id=>S.items.find(i=>i.id===id);
+const who=r=>r.name?esc(r.name):(r.by==='admin'?'Admin':'Staff');
+const myName=()=>CLOUD&&me?{name:me.name}:{};
 function days(a,b){const o=[];for(let k=a;k<=b;k=addDays(k,1))o.push(k);return o}
 
 /* ---------- storage ---------- */
@@ -540,18 +558,23 @@ function db(){return dbp||(dbp=new Promise((res,rej)=>{const r=indexedDB.open(DB
 function idbGet(k){return db().then(d=>new Promise((res,rej)=>{const q=d.transaction(ST).objectStore(ST).get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)}))}
 function idbPut(k,v){return db().then(d=>new Promise((res,rej)=>{const tx=d.transaction(ST,'readwrite');tx.objectStore(ST).put(v,k);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)}))}
 function save(){
+  if(CLOUD){if(cloud)cloud.push(S);return}
   const json=JSON.stringify(S);
   saving=saving.then(()=>idbPut('state',json)).then(()=>{if(saveFailed){saveFailed=false;toast('Saving works again')}},()=>{saveFailed=true;toast('Could not save on this device. Back up now in Settings.')});
   try{localStorage.setItem(LS,json)}catch(e){try{localStorage.removeItem(LS)}catch(e2){}}
 }
-async function load(){
+async function readLocal(){
   let raw=null;
   try{raw=await idbGet('state')}catch(e){}
   if(!raw){try{raw=localStorage.getItem(LS)}catch(e){}}
-  if(raw){try{S=JSON.parse(raw);return}catch(e){}}
-  S=fresh();save();
+  if(raw){try{return JSON.parse(raw)}catch(e){}}
+  return null;
 }
-function needsBackup(){const last=S.lastBackup||0;return !S.sample&&S.orders.some(o=>o.ts>last)&&Date.now()-last>20*3600e3}
+async function load(){
+  S=await readLocal();
+  if(!S){S=fresh();save()}
+}
+function needsBackup(){if(CLOUD)return false;const last=S.lastBackup||0;return !S.sample&&S.orders.some(o=>o.ts>last)&&Date.now()-last>20*3600e3}
 function baseItems(){return[
   {id:'ori',name:'Original',price:9,cat:'flavour',active:true,color:'#D9A441'},
   {id:'hot',name:'Hot & Spicy',price:10,cat:'flavour',active:true,color:'#D2381F'},
@@ -619,11 +642,13 @@ const TAB_ICON={
 /* ---------- render ---------- */
 function allowed(v){return role==='admin'||STAFF_VIEWS.includes(v)}
 function render(){
+  if(CLOUD&&!cloudReady)return;
   if(!allowed(view))view='cashier';
   $('tabs').innerHTML=VIEWS.filter(([v])=>allowed(v)).map(([v,l])=>`<button class="${v===view?'on':''}" data-act="view" data-id="${v}">${l}</button>`).join('');
   const tv=VIEWS.filter(([v])=>allowed(v)), bt=$('btabs');bt.style.setProperty('--n',tv.length);
   bt.innerHTML=tv.map(([v,l])=>`<button class="${v===view?'on':''}" data-act="view" data-id="${v}" aria-label="${l}" ${v===view?'aria-current="page"':''}>${TAB_ICON[v]}<span>${l}</span></button>`).join('');
   $('roleChip').textContent=role==='admin'?'Admin':'Staff';
+  if(CLOUD&&me)$('roleChip').title=me.name+' · '+me.email;
   $('sampleBar').hidden=!S.sample;
   const nb=role==='admin'&&needsBackup();$('backupBar').hidden=!nb;
   if(nb)$('backupBar').innerHTML=`<b>${S.lastBackup?'Last backup '+dlabel(dkey(new Date(S.lastBackup)))+'.':'No backup yet.'}</b> Save a copy of your sales in case this device is lost. <button class="ghost" data-act="backup" style="padding:4px 10px;margin-left:6px">Back up now</button>`;
@@ -653,7 +678,7 @@ function vCashier(m){
   const nToday=S.orders.filter(o=>o.date===t&&!o.voided).length;
   const tiles=items.map((it,ti)=>{
     const q=cart[it.id]||0, out=it.stock&&it.qty<=0, low=it.stock&&it.qty<=S.lowAt;
-    return `<button class="tile ${it.cat==='addon'?'addon':''} ${q?'in':''} ${out?'out':''}" data-act="add" data-id="${it.id}" style="--sw:${esc(it.color||'#999')};--i:${ti}" aria-label="Add ${esc(it.name)}">
+    return `<button class="tile ${it.cat==='addon'?'addon':''} ${q?'in':''} ${out?'out':''}" data-act="add" data-id="${esc(it.id)}" style="--sw:${esc(it.color||'#999')};--i:${ti}" aria-label="Add ${esc(it.name)}">
       ${q?`<span class="badge ${fx.pop===it.id?'pop':''}">${q}</span>`:''}
       <span class="sw"></span>
       <span class="tname">${esc(it.name)}</span>
@@ -669,10 +694,10 @@ function vCashier(m){
     <div class="tiles">${tiles}</div>
     <aside class="ticket ${lines.length&&(remarkOpen||cartNote)?'has-remark':''}">${stamp}
       <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${count?`${count} item${count===1?'':'s'}<button class="ghost sm" data-act="clear">Clear</button>`:`${nToday} orders today`}</span></div>
-      ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
+      ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${esc(lo.id)}">Undo</button></div>`:''}
       <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line ${fx.pop===id&&fx.newLine?'slide':''}">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
-          <div class="step"><button data-act="dec" data-id="${id}" aria-label="One less">−</button><b class="${fx.pop===id&&!fx.newLine?'pop':''}">${q}</b><button data-act="add" data-id="${id}" aria-label="One more">+</button></div>
+          <div class="step"><button data-act="dec" data-id="${esc(id)}" aria-label="One less">−</button><b class="${fx.pop===id&&!fx.newLine?'pop':''}">${q}</b><button data-act="add" data-id="${esc(id)}" aria-label="One more">+</button></div>
         </div>`}).join(''):'<div class="empty">Tap a flavour to start the order.</div>'}</div>
       ${lines.length?`<div class="remark">${remarkOpen||cartNote?`<input class="inp" id="cartNote" placeholder="Remark, e.g. no sauce" value="${esc(cartNote)}" maxlength="120" autocomplete="off" aria-label="Remark for this order">
         <div class="rchips">${REMARKS.map(r=>`<button class="chip sm ${noteParts(cartNote).includes(r)?'on':''}" data-act="rchip" data-id="${r}">${r}</button>`).join('')}</div>`:'<button class="linkbtn" data-act="remark">+ Add remark</button>'}</div>`:''}
@@ -699,9 +724,9 @@ function vOrders(m){
       ${role==='admin'?`<div class="stat"><span>Sales</span><b>${rm(sales)}</b></div>`:''}
       <div class="stat"><span>Items sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
     </div>
-    <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${o.id}">
+    <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${esc(o.id)}">
         <span class="no">#${o.no}</span>
-        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${o.by==='admin'?'Admin':'Staff'}</small> ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
+        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${who(o)}</small> ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
         <span class="r">${rm(o.total)}</span></button>`).join(''):'<div class="empty">No orders on this day.</div>'}</div></div>
   </div>`;
 }
@@ -857,7 +882,7 @@ function vExpenses(m){
           <span class="lsub">${parse(e.date).toLocaleDateString('en-MY',{day:'numeric',month:'short'})}</span>
           <span class="mid"><div><b>${esc(e.cat)}</b></div><small>${esc(e.note||'')}</small></span>
           <span class="r">${rm(e.amount)}</span>
-          <button class="ghost" data-act="delexp" data-id="${e.id}" aria-label="Delete">✕</button></div>`).join(''):'<div class="empty">Nothing recorded yet.</div>'}
+          <button class="ghost" data-act="delexp" data-id="${esc(e.id)}" aria-label="Delete">✕</button></div>`).join(''):'<div class="empty">Nothing recorded yet.</div>'}
       </div></div>
     </div>
   </div>`;
@@ -876,14 +901,14 @@ function vStock(m){
           <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="big-stock">${it.qty}</span><span class="note">packs left</span>${state}</div>
           ${role==='admin'?`
           <div class="form">
-            <div class="field"><label for="rq-${it.id}">Packs received</label><input class="inp" type="number" inputmode="numeric" min="1" id="rq-${it.id}" placeholder="20"></div>
-            <div class="field"><label for="rc-${it.id}">Cost paid</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="rc-${it.id}" placeholder="Optional"></span></div>
-            <button class="btn" data-act="receive" data-id="${it.id}">Add stock</button>
+            <div class="field"><label for="rq-${esc(it.id)}">Packs received</label><input class="inp" type="number" inputmode="numeric" min="1" id="rq-${esc(it.id)}" placeholder="20"></div>
+            <div class="field"><label for="rc-${esc(it.id)}">Cost paid</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="rc-${esc(it.id)}" placeholder="Optional"></span></div>
+            <button class="btn" data-act="receive" data-id="${esc(it.id)}">Add stock</button>
           </div>
           <p class="note">Cost paid is also saved as a "Frozen stock" expense.</p>
           <div class="form">
-            <div class="field"><label for="cq-${it.id}">Counted on shelf</label><input class="inp" type="number" inputmode="numeric" min="0" id="cq-${it.id}" placeholder="${it.qty}"></div>
-            <button class="btn quiet" data-act="count" data-id="${it.id}">Correct count</button>
+            <div class="field"><label for="cq-${esc(it.id)}">Counted on shelf</label><input class="inp" type="number" inputmode="numeric" min="0" id="cq-${esc(it.id)}" placeholder="${it.qty}"></div>
+            <button class="btn quiet" data-act="count" data-id="${esc(it.id)}">Correct count</button>
           </div>`:'<p class="note">Selling a pack at the cashier takes it off stock. Ask the admin to add new stock.</p>'}
         </div>
         <div class="panel"><h3>History</h3><div class="list">${mv.length?mv.map(x=>`<div class="row" style="grid-template-columns:110px minmax(0,1fr) auto"><span class="lsub">${parse(dkey(new Date(x.ts))).toLocaleDateString('en-MY',{day:'numeric',month:'short'})} ${tm(x.ts)}</span><span class="mid"><div>${esc(x.reason)}</div></span><span class="r ${x.delta>0?'pos-v':''}">${x.delta>0?'+':''}${x.delta}</span></div>`).join(''):'<div class="empty">No movements yet.</div>'}</div></div>
@@ -898,25 +923,25 @@ function vSettings(m){
       <p class="note" style="margin-bottom:8px">Changes save straight away. Old orders keep the price they were sold at.</p>
       <div class="menu-row menu-head" aria-hidden="true"><span>Item name</span><span>Price</span><span>Category</span><span>Cashier</span><span>Stock</span><span>Colour</span></div>
       ${S.items.map(it=>`<div class="menu-row">
-        <label class="mf"><span class="mfl">Item name</span><input class="inp" value="${esc(it.name)}" data-edit="${it.id}" data-f="name" placeholder="Item name" aria-label="Item name"></label>
-        <label class="mf"><span class="mfl">Price</span><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" step="0.5" value="${it.price}" data-edit="${it.id}" data-f="price" aria-label="Price in RM"></span></label>
-        <label class="mf"><span class="mfl">Category</span><select class="inp" data-edit="${it.id}" data-f="cat" aria-label="Category">${[['flavour','Flavour'],['frozen','Frozen'],['addon','Add-on'],['other','Other']].map(([v,l])=>`<option value="${v}" ${it.cat===v?'selected':''}>${l}</option>`).join('')}</select></label>
-        <label class="tog"><input type="checkbox" data-edit="${it.id}" data-f="active" ${it.active?'checked':''}>On menu</label>
-        <label class="tog"><input type="checkbox" data-edit="${it.id}" data-f="stock" ${it.stock?'checked':''}>Track stock</label>
-        <label class="mf"><span class="mfl">Colour</span><input type="color" value="${esc(it.color||'#999999')}" data-edit="${it.id}" data-f="color" aria-label="Colour" style="width:44px;height:44px;border:0;background:none;padding:0"></label>
+        <label class="mf"><span class="mfl">Item name</span><input class="inp" value="${esc(it.name)}" data-edit="${esc(it.id)}" data-f="name" placeholder="Item name" aria-label="Item name"></label>
+        <label class="mf"><span class="mfl">Price</span><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" step="0.5" value="${it.price}" data-edit="${esc(it.id)}" data-f="price" aria-label="Price in RM"></span></label>
+        <label class="mf"><span class="mfl">Category</span><select class="inp" data-edit="${esc(it.id)}" data-f="cat" aria-label="Category">${[['flavour','Flavour'],['frozen','Frozen'],['addon','Add-on'],['other','Other']].map(([v,l])=>`<option value="${v}" ${it.cat===v?'selected':''}>${l}</option>`).join('')}</select></label>
+        <label class="tog"><input type="checkbox" data-edit="${esc(it.id)}" data-f="active" ${it.active?'checked':''}>On menu</label>
+        <label class="tog"><input type="checkbox" data-edit="${esc(it.id)}" data-f="stock" ${it.stock?'checked':''}>Track stock</label>
+        <label class="mf"><span class="mfl">Colour</span><input type="color" value="${esc(it.color||'#999999')}" data-edit="${esc(it.id)}" data-f="color" aria-label="Colour" style="width:44px;height:44px;border:0;background:none;padding:0"></label>
       </div>`).join('')}
       <div style="margin-top:12px"><button class="btn quiet" data-act="additem">+ Add item</button></div>
     </div>
     <div class="two">
-      <div class="panel"><h3>PINs</h3>
+      ${CLOUD?teamPanel():`<div class="panel"><h3>PINs</h3>
         <div class="form">
           <div class="field"><label for="pinA">Admin PIN</label><input class="inp" id="pinA" inputmode="numeric" maxlength="4" value="${esc(S.pins.admin)}"></div>
           <div class="field"><label for="pinS">Staff PIN</label><input class="inp" id="pinS" inputmode="numeric" maxlength="4" value="${esc(S.pins.staff)}"></div>
           <button class="btn dark" data-act="savepins">Save PINs</button>
         </div>
         <p class="note" style="margin-top:10px">Staff can use the cashier, see today's orders and check stock. Only the admin sees money totals, expenses and settings, and only the admin can void an order.</p>
-      </div>
-      <div class="panel"><h3>Data</h3>
+      </div>`}
+      <div class="panel"><h3>Data</h3>${CLOUD?`<p class="note" style="margin-bottom:12px">${syncText()}</p>`:''}
         <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
           <button class="btn" data-act="backup">Back up everything</button>
           <button class="btn quiet" data-act="restore">Restore from backup</button>
@@ -924,9 +949,9 @@ function vSettings(m){
           <div class="field"><label for="target">Daily sales target</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="target" value="${S.target||''}" placeholder="Off"></span></div>
           <div class="field"><label for="lowAt">Warn when stock is at or below</label><input class="inp" type="number" min="0" id="lowAt" value="${S.lowAt}"></div>
         </div>
-        <p class="note" style="margin-top:10px"><b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Restore</b> puts it back on a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>
+        <p class="note" style="margin-top:10px">${CLOUD?'Sales are saved in the cloud and shared by every signed in device. A backup file is still a good extra copy. ':''}<b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Restore</b> puts it back on a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>
         <input type="file" id="restoreFile" hidden>
-        <div class="chips" style="margin-top:12px">
+        <div class="chips" style="margin-top:12px" ${CLOUD?'hidden':''}>
           ${S.sample?'<button class="btn" data-act="clearsample">Clear sample data</button>':''}
           ${S.sample||!S.orders.length?'<button class="btn quiet" data-act="restoresample">Load sample data</button>':''}
         </div>
@@ -957,11 +982,11 @@ if(darkMQ&&darkMQ.addEventListener)darkMQ.addEventListener('change',applyTheme);
 
 /* ---------- activity log ---------- */
 let logAll=false;
-function logA(action,detail){S.log=S.log||[];S.log.push({ts:Date.now(),by:role,action,detail:detail||''});if(S.log.length>3000)S.log.splice(0,S.log.length-3000)}
+function logA(action,detail){S.log=S.log||[];S.log.push(Object.assign({id:uid(),ts:Date.now(),by:role,action,detail:detail||''},myName()));if(S.log.length>3000)S.log.splice(0,S.log.length-3000)}
 function activityPanel(){
   const L=(S.log||[]).slice().reverse(), shown=logAll?L:L.slice(0,40);
   return `<div class="panel"><h3>Activity log · ${L.length} entr${L.length===1?'y':'ies'}</h3>
-    ${L.length?`<div class="list">${shown.map(x=>`<div class="row logrow" style="grid-template-columns:84px minmax(0,1fr) auto"><span class="lsub">${parse(dkey(new Date(x.ts))).toLocaleDateString('en-MY',{day:'numeric',month:'short'})}<br>${tm(x.ts)}</span><span class="mid"><div><b>${esc(x.action)}</b></div><small>${esc(x.detail)}</small></span><span class="pill ${x.by==='admin'?'adm':'stf'}">${x.by==='admin'?'Admin':'Staff'}</span></div>`).join('')}</div>
+    ${L.length?`<div class="list">${shown.map(x=>`<div class="row logrow" style="grid-template-columns:84px minmax(0,1fr) auto"><span class="lsub">${parse(dkey(new Date(x.ts))).toLocaleDateString('en-MY',{day:'numeric',month:'short'})}<br>${tm(x.ts)}</span><span class="mid"><div><b>${esc(x.action)}</b></div><small>${esc(x.detail)}</small></span><span class="pill ${x.by==='admin'?'adm':'stf'}">${who(x)}</span></div>`).join('')}</div>
       ${L.length>40?`<button class="btn quiet" data-act="logall" style="margin-top:10px">${logAll?'Show less':'Show all '+L.length}</button>`:''}`
     :'<div class="empty">Nothing yet. Voids, deletes, price changes, stock changes and sign-ins show up here.</div>'}
   </div>`;
@@ -1165,7 +1190,7 @@ function complete(){
   const ts=Date.now(),date=bdate(ts),no=nextNo(date),total=lines.reduce((s,l)=>s+l.price*l.qty,0);
   const oid=uid();
   const note=cartNote.trim();
-  S.orders.push(Object.assign({id:oid,no,ts,date,lines,total,by:role,voided:null},note?{note}:{}));
+  S.orders.push(Object.assign({id:oid,no,ts,date,lines,total,by:role,voided:null},myName(),note?{note}:{}));
   lines.forEach(l=>{const it=item(l.itemId);if(it.stock){it.qty-=l.qty;S.moves.push({ts,itemId:it.id,delta:-l.qty,reason:`Sold · order #${no}`})}});
   cart={};cartNote='';remarkOpen=false;lastOrderId=oid;clearTimeout(undoTimer);
   undoTimer=setTimeout(()=>{if(view==='cashier'&&$('modal').hidden)render()},UNDO_MS+500);
@@ -1177,13 +1202,13 @@ function canNote(o){return role==='admin'||o.date===today()}
 function orderSheet(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
   openModal(`<h2>Order #${o.no}</h2>
-    <p class="note">${dlabel(o.date)}, ${tm(o.ts)} · served by ${o.by==='admin'?'Admin':'Staff'}</p>
+    <p class="note">${dlabel(o.date)}, ${tm(o.ts)} · served by ${who(o)}</p>
     <div>${o.lines.map(l=>`<div class="line"><div><div class="lname">${esc(l.name)}</div><div class="lsub">${l.qty} × ${rm0(l.price)}</div></div><b>${rm(l.price*l.qty)}</b></div>`).join('')}</div>
     <div class="sum-row"><span>Total</span><div class="amt" style="font-size:40px">${rm(o.total)}</div></div>
-    <div class="field"><label for="noteEdit">Remark</label><input class="inp" id="noteEdit" data-id="${o.id}" value="${esc(o.note||'')}" placeholder="${canNote(o)?'Add a remark':'No remark'}" maxlength="120" autocomplete="off" ${canNote(o)?'':'readonly'}></div>
+    <div class="field"><label for="noteEdit">Remark</label><input class="inp" id="noteEdit" data-id="${esc(o.id)}" value="${esc(o.note||'')}" placeholder="${canNote(o)?'Add a remark':'No remark'}" maxlength="120" autocomplete="off" ${canNote(o)?'':'readonly'}></div>
     ${o.voided?`<p class="note"><span class="pill void">Voided</span> ${tm(o.voided.ts)} · ${esc(o.voided.reason)}</p>`:''}
     ${role==='staff'&&!o.voided?`<p class="note">${canVoid(o)?'You can cancel an order for 2 minutes after it is made.':'Only the admin can void this order now.'}</p>`:''}
-    <div class="acts">${role==='admin'?`<button class="btn danger" data-act="delask" data-id="${o.id}" style="margin-right:auto">Delete</button>`:''}<button class="btn quiet" data-act="close">Close</button>${canVoid(o)?`<button class="btn" data-act="voidask" data-id="${o.id}">Void order</button>`:''}</div>`);
+    <div class="acts">${role==='admin'?`<button class="btn danger" data-act="delask" data-id="${esc(o.id)}" style="margin-right:auto">Delete</button>`:''}<button class="btn quiet" data-act="close">Close</button>${canVoid(o)?`<button class="btn" data-act="voidask" data-id="${esc(o.id)}">Void order</button>`:''}</div>`);
 }
 function delSheet(id){
   const o=S.orders.find(x=>x.id===id);if(!o||role!=='admin')return;
@@ -1191,14 +1216,14 @@ function delSheet(id){
     <p class="note">Deleting removes this order completely. It will not show in Orders, the Dashboard, day reports or Excel, and it cannot be undone. To cancel a sale but keep a record of it, use <b>Void order</b> instead.</p>
     <div class="del-list">${o.lines.map(l=>`<div class="line"><div><div class="lname">${esc(l.name)}</div><div class="lsub">${l.qty} × ${rm0(l.price)}</div></div><b>${rm(l.price*l.qty)}</b></div>`).join('')}</div>
     <p class="note">${dlabel(o.date)}, ${tm(o.ts)} · total ${rm(o.total)}${o.voided?' · already voided':''}</p>
-    <div class="acts"><button class="btn quiet" data-act="order" data-id="${o.id}">Back</button><button class="btn danger" data-act="delstep2" data-id="${o.id}">Continue</button></div>`);
+    <div class="acts"><button class="btn quiet" data-act="order" data-id="${esc(o.id)}">Back</button><button class="btn danger" data-act="delstep2" data-id="${esc(o.id)}">Continue</button></div>`);
 }
 function delSheet2(id){
   const o=S.orders.find(x=>x.id===id);if(!o||role!=='admin')return;
   openModal(`<h2>Are you sure?</h2>
     <p class="note">Type <b>${o.no}</b> below to delete order #${o.no} (${rm(o.total)}) forever.</p>
     <div class="field"><label for="delConfirm">Order number</label><input class="inp" id="delConfirm" data-no="${o.no}" inputmode="numeric" autocomplete="off" placeholder="${o.no}"></div>
-    <div class="acts"><button class="btn quiet" data-act="close">Cancel</button><button class="btn del" id="delBtn" data-act="del" data-id="${o.id}" disabled>Delete forever</button></div>`);
+    <div class="acts"><button class="btn quiet" data-act="close">Cancel</button><button class="btn del" id="delBtn" data-act="del" data-id="${esc(o.id)}" disabled>Delete forever</button></div>`);
   setTimeout(()=>{const i=$('delConfirm');i&&i.focus()},350);
 }
 function doDelete(id){
@@ -1214,12 +1239,12 @@ function voidSheet(id){
   const o=S.orders.find(x=>x.id===id);
   openModal(`<h2>Void order #${o.no}?</h2><p class="note">The order stays in the history, crossed out, and is left out of sales. Frozen packs go back into stock.</p>
     <div class="field"><label for="vReason">Reason</label><select class="inp" id="vReason"><option>Wrong flavour keyed in</option><option>Wrong quantity</option><option>Customer cancelled</option><option>Test order</option><option>Other</option></select></div>
-    <div class="acts"><button class="btn quiet" data-act="order" data-id="${o.id}">Back</button><button class="btn" data-act="void" data-id="${o.id}">Void order</button></div>`);
+    <div class="acts"><button class="btn quiet" data-act="order" data-id="${esc(o.id)}">Back</button><button class="btn" data-act="void" data-id="${esc(o.id)}">Void order</button></div>`);
 }
 function doVoid(id){
   const o=S.orders.find(x=>x.id===id),ts=Date.now();
   if(!canVoid(o)){closeModal();render();toast('Only the admin can void orders older than 2 minutes');return}
-  o.voided={ts,reason:$('vReason').value,by:role};
+  o.voided=Object.assign({ts,reason:$('vReason').value,by:role},myName());
   logA('Voided order','#'+o.no+' ('+dlabel(o.date)+') · '+rm(o.total)+' · '+o.voided.reason);
   o.lines.forEach(l=>{const it=item(l.itemId);if(it&&it.stock){it.qty+=l.qty;S.moves.push({ts,itemId:it.id,delta:l.qty,reason:`Void · order #${o.no}`})}});
   save();closeModal();render();toast(`Order #${o.no} voided`);
@@ -1248,13 +1273,13 @@ function excel(a,b){
     daily.push([D(d),DOW[parse(d).getDay()],o.length,o.reduce((s,x)=>s+qty(x),0),M(sv),M(ev),M(sv-ev)])});
   daily.push([B('Total'),'',BI(T.ords.length),BI(portions),BM(T.sales),BM(T.cost),BM(T.profit)]);
   const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Served by'),H('Status'),H('Void reason'),H('Remark')]];
-  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),o.by==='admin'?'Admin':'Staff',o.voided?'Voided':'Sold',o.voided?o.voided.reason:'',o.note||''])));
+  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),o.name||(o.by==='admin'?'Admin':'Staff'),o.voided?'Voided':'Sold',o.voided?o.voided.reason:'',o.note||''])));
   const expenses=[[H('Date'),H('Category'),H('Amount'),H('Note')]];
   T.exps.slice().sort((x,y)=>x.date.localeCompare(y.date)||x.ts-y.ts).forEach(e=>expenses.push([D(e.date),e.cat,M(e.amount),e.note||'']));
   const stock=[[H('Date'),H('Time'),H('Item'),H('Change'),H('Reason')]];
   S.moves.filter(x=>{const d=bdate(x.ts);return d>=a&&d<=b}).sort((x,y)=>x.ts-y.ts).forEach(x=>{const it=item(x.itemId);stock.push([D(bdate(x.ts)),{v:x.ts,t:'time'},it?it.name:x.itemId,x.delta,x.reason])});
   const act=[[H('Date'),H('Time'),H('By'),H('Action'),H('Details')]];
-  (S.log||[]).filter(x=>{const k=bdate(x.ts);return k>=a&&k<=b}).forEach(x=>act.push([D(bdate(x.ts)),{v:x.ts,t:'time'},x.by==='admin'?'Admin':'Staff',x.action,x.detail]));
+  (S.log||[]).filter(x=>{const k=bdate(x.ts);return k>=a&&k<=b}).forEach(x=>act.push([D(bdate(x.ts)),{v:x.ts,t:'time'},x.name||(x.by==='admin'?'Admin':'Staff'),x.action,x.detail]));
   const bytes=KKXLSX.build([
     {name:'Summary',cols:[26,30,14,16],rows:summary},
     {name:'Daily',cols:[14,8,10,10,14,14,14],freeze:true,rows:daily},
@@ -1294,7 +1319,7 @@ function restoreFrom(file){
     let b;try{b=JSON.parse(rd.result)}catch(e){toast('That file is not a Kepokkaw backup');return}
     const d=b&&b.app==='kepokkaw-pos'&&b.data;
     if(!d||!Array.isArray(d.items)||!Array.isArray(d.orders)||!Array.isArray(d.expenses)){toast('That file is not a Kepokkaw backup');return}
-    ask('Restore this backup?',`Backup from ${dlabel(dkey(new Date(b.exported)))}, ${tm(b.exported)} with ${d.orders.length} orders and ${d.expenses.length} expenses. Everything on this device is replaced.`,'Restore',()=>{S=d;S.moves=S.moves||[];cart={};logA('Restored backup','from '+dlabel(dkey(new Date(b.exported)))+', '+tm(b.exported));save();render();toast('Backup restored')});
+    ask('Restore this backup?',`Backup from ${dlabel(dkey(new Date(b.exported)))}, ${tm(b.exported)} with ${d.orders.length} orders and ${d.expenses.length} expenses. ${CLOUD?'Everything in the cloud is replaced, on every device.':'Everything on this device is replaced.'}`,'Restore',()=>{S=CLOUD?Object.assign(d,{sample:false}):d;S.moves=S.moves||[];S.log=S.log||[];S.closed=S.closed||{};if(!S.pins)S.pins={admin:'1234',staff:'0000'};cart={};logA('Restored backup','from '+dlabel(dkey(new Date(b.exported)))+', '+tm(b.exported));save();render();toast('Backup restored')});
   };
   rd.readAsText(file);
 }
@@ -1321,7 +1346,7 @@ document.addEventListener('click',e=>{
     case 'dash':dashP=id;calMonth=null;fx.enter=true;render();break;
     case 'close':closeModal();break;
     case 'yes':{const f=pending;closeModal();f&&f();break}
-    case 'lock':pinRole=role==='admin'?'staff':'admin';showPin();break;
+    case 'lock':if(CLOUD){ask('Sign out?',Object.keys(cart).length?'The order on the cashier screen is not finished and will be cleared.':`Signed in as ${esc(me?me.name:'')}. Anyone using this device will need an email and password to sign in again.`,'Sign out',()=>{cart={};cloud.signOut()});break}pinRole=role==='admin'?'staff':'admin';showPin();break;
     case 'prole':pinRole=id;pinBuf='';drawPin();break;
     case 'pk':pinKey(id);break;
     case 'pc':pinBuf='';drawPin();break;
@@ -1374,9 +1399,21 @@ document.addEventListener('click',e=>{
     case 'dstep':{const [a,b]=range('custom'),n=days(a,b).length*(+id);let na=addDays(a,n),nb=addDays(b,n);if(nb>today()){nb=today();na=addDays(nb,-(days(a,b).length-1))}dashFrom=na;dashTo=nb;calMonth=null;fx.enter=true;render();break}
     case 'dayorders':ordDate=range('custom')[0];view='orders';render();$('main').scrollTop=0;break;
     case 'reload':if(Object.keys(cart).length)ask('Reload now?','The order on the cashier screen is not finished and will be cleared.','Reload',()=>location.reload());else location.reload();break;
+    case 'gsignout':cloud&&cloud.signOut();break;
+    case 'gmode':loginGate(id);break;
+    case 'gforgot':{const em=$('gEmail').value.trim(),msg=$('gMsg');if(!em){msg.textContent='Type your email first, then tap Forgot password.';break}cloud.resetPassword(em).then(()=>msg.textContent='Reset link sent to '+em+'. Check the inbox and spam folder.',err=>msg.textContent=authMsg(err));break}
+    case 'gup':if(upChoice)upChoice(id==='1');break;
+    case 'addmember':{
+      if(!CLOUD||role!=='admin')break;
+      const nm=$('tName').value.trim(),em=$('tEmail').value.trim(),pw=$('tPw').value,rl=$('tRole').value;
+      if(!nm||!em){toast('Enter a name and an email');break}
+      if(pw.length<6){toast('Password needs at least 6 characters');break}
+      b.disabled=true;
+      cloud.addMember(em,pw,nm,rl).then(()=>{logA('Added person',`${nm} (${em}) as ${rl==='admin'?'Admin':'Staff'}`);save();render();toast(`${nm} added. Give them the email and password.`)},err=>{b.disabled=false;toast(authMsg(err))});
+      break}
     case 'restore':$('restoreFile').value='';$('restoreFile').click();break;
-    case 'clearsample':ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;S.log=[];S.closed={};cart={};logA('Cleared sample data','');save();render();toast('Sample data cleared')});break;
-    case 'restoresample':ask('Load sample data?','This replaces everything recorded on this device with 14 days of made-up sales.','Load sample',()=>{S=seed();cart={};logA('Loaded sample data','');save();render();toast('Sample data loaded')});break;
+    case 'clearsample':if(CLOUD)break;ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;S.log=[];S.closed={};cart={};logA('Cleared sample data','');save();render();toast('Sample data cleared')});break;
+    case 'restoresample':if(CLOUD)break;ask('Load sample data?','This replaces everything recorded on this device with 14 days of made-up sales.','Load sample',()=>{S=seed();cart={};logA('Loaded sample data','');save();render();toast('Sample data loaded')});break;
   }
 });
 document.addEventListener('input',e=>{
@@ -1391,6 +1428,11 @@ document.addEventListener('change',e=>{
     const old=o.note||'',v=t.value.trim();if(v===old)return;
     if(v)o.note=v;else delete o.note;
     logA('Edited remark','#'+o.no+' ('+dlabel(o.date)+'): '+(old||'none')+' → '+(v||'none'));save();render();toast('Remark saved');return}
+  if(t.dataset.urole){
+    const u=users.find(x=>x.uid===t.dataset.urole);if(!u||role!=='admin')return;
+    const nr=t.value,label={admin:'Admin',staff:'Staff',removed:'Removed'};
+    cloud.setRole(u.uid,nr).then(()=>{logA('Changed role',`${u.name||u.email}: ${label[u.role]||u.role} → ${label[nr]}`);save();toast('Saved')},err=>{t.value=u.role;toast(authMsg(err))});
+    return}
   if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0]);return}
   if(t.id==='dFrom'||t.id==='dTo'){
     const tt=today();let a=$('dFrom').value||tt,b=$('dTo').value||a;
@@ -1412,14 +1454,133 @@ document.addEventListener('change',e=>{
   }
 });
 
+/* ---------- cloud: sign in, first upload, team, sync status ---------- */
+let gateT=0, localCopy=null, renderLater=false, waitMenu=false, upChoice=null;
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+function showGate(html){clearTimeout(gateT);const p=$('pin');p.classList.remove('out');p.hidden=false;p.innerHTML=`<div class="pin-box gate"><div class="brand">Kepok<br>Kaw</div>${html}</div>`}
+function hideGate(){const p=$('pin');if(p.hidden)return;if(MOTION){p.classList.add('out');gateT=setTimeout(()=>{p.hidden=true;p.classList.remove('out')},220)}else p.hidden=true}
+function loginGate(mode){
+  const setup=mode==='setup';
+  showGate(`<form class="gate-form" id="gateForm" data-mode="${mode}" novalidate>
+    <h2>${setup?'Set up the shop':'Sign in'}</h2>
+    ${setup?'<p class="pin-hint">This creates the owner account. The owner can add staff and other admins in Settings.</p><input class="inp" id="gName" placeholder="Your name" autocomplete="name">':''}
+    <input class="inp" id="gEmail" type="email" placeholder="Email" autocomplete="username" autocapitalize="off" spellcheck="false">
+    <input class="inp" id="gPw" type="password" placeholder="${setup?'Password, at least 6 characters':'Password'}" autocomplete="${setup?'new-password':'current-password'}">
+    <p class="gate-msg" id="gMsg" role="status"></p>
+    <button class="btn" type="submit">${setup?'Create owner account':'Sign in'}</button>
+    ${setup?'<button class="linkbtn" type="button" data-act="gmode" data-id="signin">I already have an account</button>':'<button class="linkbtn" type="button" data-act="gforgot">Forgot password?</button>'}
+  </form>`);
+}
+function authMsg(e){
+  const c=(e&&e.code)||'';
+  if(/invalid-credential|wrong-password|user-not-found|invalid-login/.test(c))return 'Wrong email or password.';
+  if(c==='auth/invalid-email')return 'That email does not look right.';
+  if(c==='auth/missing-password')return 'Enter the password.';
+  if(c==='auth/weak-password')return 'Use at least 6 characters for the password.';
+  if(c==='auth/email-already-in-use')return 'That email already has an account. If they were removed, change their role in the Team list instead.';
+  if(c==='auth/network-request-failed')return 'No internet. Signing in needs a connection the first time.';
+  if(c==='auth/too-many-requests')return 'Too many tries. Wait a few minutes and try again.';
+  if(c==='permission-denied')return 'This shop is already set up. Sign in instead.';
+  return 'Something went wrong ('+(c||(e&&e.message)||'unknown')+').';
+}
+function safeRender(){
+  const a=document.activeElement;
+  if(a&&a.matches&&a.matches('input,select,textarea')&&($('main').contains(a)||$('sheet').contains(a))){renderLater=true;return}
+  render();
+}
+document.addEventListener('focusout',()=>{if(renderLater)setTimeout(()=>{const a=document.activeElement;if(renderLater&&!(a&&a.matches&&a.matches('input,select,textarea')&&$('main').contains(a))){renderLater=false;render()}},0)});
+function syncText(){
+  if(!sync.online)return '<b>Offline.</b> Changes are kept on this device and upload by themselves when the internet is back.';
+  return sync.pending?'<b>Uploading changes…</b>':'<b>All changes are saved in the cloud.</b>';
+}
+function updateSyncBar(){
+  const b=$('syncBar'),show=CLOUD&&cloudReady&&!sync.online;b.hidden=!show;
+  if(show)b.innerHTML='<b>Offline.</b> <span class="long">Keep selling. Orders are saved on this device and upload when the internet is back.</span><span class="short">Orders upload when back online.</span>';
+}
+function openApp(){
+  cloudReady=true;waitMenu=false;hideGate();
+  const h=location.hash.slice(1);if(VIEWS.some(v=>v[0]===h))view=h;
+  if(!allowed(view))view='cashier';
+  fx.enter=true;render();updateSyncBar();wake();
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
+}
+// First admin sign in on an empty shop: send this device's menu, and its sales if the owner wants.
+function firstUpload(){
+  const L=localCopy&&Array.isArray(localCopy.items)?localCopy:null, real=L&&!L.sample, n=real&&Array.isArray(L.orders)?L.orders.length:0;
+  upChoice=all=>{
+    upChoice=null;
+    const base=L||fresh();
+    S.items=base.items.map(it=>Object.assign({},it,{qty:real?(+it.qty||0):0}));
+    S.target=real?base.target||0:0;S.lowAt=base.lowAt==null?5:base.lowAt;
+    if(all){S.orders=L.orders||[];S.expenses=L.expenses||[];S.moves=L.moves||[];S.log=L.log||[];S.closed=L.closed||{}}
+    logA('Set up cloud sync',all?`Uploaded ${n} orders from this device`:'');save();openApp();
+    toast(all?`Uploading ${n} orders`:'Shop is ready');
+  };
+  if(n)showGate(`<p class="pin-hint">This device already has <b>${n} orders</b> saved. Upload them so every device can see them?</p><button class="btn" data-act="gup" data-id="1">Upload sales</button><button class="linkbtn" data-act="gup" data-id="0">Start empty, keep the menu</button>`);
+  else upChoice(false);
+}
+async function startCloud(){
+  S=fresh();S.items=[];
+  showGate('<p class="pin-hint">Loading…</p>');
+  $('lockBtn').setAttribute('aria-label','Sign out');{const lb=$('lockBtn').querySelector('.lbl');if(lb)lb.textContent='Sign out'}
+  try{localCopy=await readLocal()}catch(e){}
+  try{await loadScript('firebase.js');await loadScript('cloud.js')}
+  catch(e){showGate('<p class="pin-hint">Could not load sync. Open the app once with internet, then try again.</p><button class="btn" data-act="reload">Try again</button>');return}
+  cloud=KKCloud.create(window.KEPOKKAW_FIREBASE,{
+    getS:()=>S, bdate,
+    onSignedOut:()=>{me=null;cloudReady=false;waitMenu=false;users=[];S=fresh();S.items=[];cart={};cartNote='';closeModal();updateSyncBar();
+      showGate('<p class="pin-hint">Loading…</p>');cloud.ownerExists().then(x=>loginGate(x===false?'setup':'signin'))},
+    onNoAccess:email=>{cloudReady=false;closeModal();showGate(`<p class="pin-hint">${esc(email)} is not on this shop's team, or was removed. Ask an admin to add this email in Settings.</p><button class="btn" data-act="gsignout">Sign out</button>`)},
+    onRole:m=>{const was=me;me=m;role=m.role;
+      if(!was||was.role!==m.role){cloudReady=false;closeModal();showGate('<p class="pin-hint">Loading sales…</p>')}
+      else if(cloudReady)safeRender()},
+    onReady:r=>{
+      if(r.needsSetup)return firstUpload();
+      if(r.noMenu){waitMenu=true;return showGate(`<p class="pin-hint">The menu has not downloaded yet. Connect this device to the internet${role==='staff'?', and check that the admin has set up the shop':''}.</p><button class="btn" data-act="gsignout">Sign out</button>`)}
+      openApp();
+    },
+    onData:()=>{if(cloudReady)safeRender();else if(waitMenu&&S.items.length)openApp()},
+    onUsers:list=>{users=list;if(cloudReady&&view==='settings')safeRender()},
+    onStatus:s=>{const was=sync.online;sync=s;updateSyncBar();if(cloudReady&&view==='settings'&&was!==s.online)safeRender()},
+    onError:e=>{const c=(e&&e.code)||'';toast(c==='permission-denied'?'Not allowed for this account':'Sync problem: '+(c||(e&&e.message)||e))}
+  });
+}
+function teamPanel(){
+  const list=users.slice().sort((a,b)=>(a.role==='removed')-(b.role==='removed')||String(a.name||'').localeCompare(String(b.name||'')));
+  return `<div class="panel"><h3>Team</h3>
+    <div class="list">${list.length?list.map(u=>`<div class="row" style="grid-template-columns:minmax(0,1fr) 130px">
+      <span class="mid"><div><b>${esc(u.name||u.email||'')}</b>${me&&u.uid===me.uid?' <span class="lsub">(you)</span>':''}</div><small>${esc(u.email||'')}${u.owner?' · owner':''}</small></span>
+      ${u.owner||(me&&u.uid===me.uid)?'<span class="pill adm" style="justify-self:end">Admin</span>':`<select class="inp" data-urole="${esc(u.uid)}" aria-label="Role for ${esc(u.name||u.email||'')}">${[['admin','Admin'],['staff','Staff'],['removed','Removed']].map(([v,l])=>`<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join('')}</select>`}
+    </div>`).join(''):'<div class="empty">Loading team…</div>'}</div>
+    <h3 style="margin-top:18px">Add a person</h3>
+    <div class="form">
+      <div class="field"><label for="tName">Name</label><input class="inp" id="tName" autocomplete="off"></div>
+      <div class="field"><label for="tEmail">Email</label><input class="inp" id="tEmail" type="email" autocapitalize="off" spellcheck="false" autocomplete="off"></div>
+      <div class="field"><label for="tPw">Password</label><input class="inp" id="tPw" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="At least 6 characters"></div>
+      <div class="field"><label for="tRole">Role</label><select class="inp" id="tRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
+      <button class="btn dark" data-act="addmember">Add person</button>
+    </div>
+    <p class="note" style="margin-top:10px">Each person signs in on their own device with this email and password. Staff can use the cashier, see orders and check stock. Only admins see money totals, expenses and settings. Choose Removed to block someone straight away.</p>
+  </div>`;
+}
+document.addEventListener('submit',e=>{
+  if(e.target.id!=='gateForm')return;e.preventDefault();
+  const f=e.target,setup=f.dataset.mode==='setup',email=$('gEmail').value.trim(),pw=$('gPw').value,name=setup?$('gName').value.trim():'',btn=f.querySelector('button[type=submit]'),msg=$('gMsg');
+  if(!email||!pw||(setup&&!name)){msg.textContent='Fill in every box.';return}
+  btn.disabled=true;msg.textContent=setup?'Creating the account…':'Signing in…';
+  (setup?cloud.setupOwner(email,pw,name):cloud.signIn(email,pw)).catch(err=>{btn.disabled=false;msg.textContent=authMsg(err)});
+});
+
 function wake(){try{navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{})}catch(e){}}
 applyTheme();
-load().then(()=>{
+if(CLOUD)startCloud();
+else load().then(()=>{
   try{const r=localStorage.getItem(LS_ROLE);if(r==='admin'||r==='staff')role=r}catch(e){}
   const h=location.hash.slice(1);if(VIEWS.some(v=>v[0]===h))view=h;
   render();wake();
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
 });
+
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){wake();if(S)render();if(swReg)swReg.update().catch(()=>{})}});
 if('serviceWorker' in navigator){
   const hadController=!!navigator.serviceWorker.controller;

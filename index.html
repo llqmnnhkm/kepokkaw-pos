@@ -569,6 +569,11 @@ const dlabel=k=>parse(k).toLocaleDateString('en-MY',{weekday:'short',day:'numeri
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const item=id=>S.items.find(i=>i.id===id);
 const who=r=>r.name?esc(r.name):(r.by==='admin'?'Admin':'Staff');
+// Every flavour sold goes in 1 cup. Add ons and frozen packs use none.
+const isCupItem=id=>{const it=S.items.find(i=>i.id===id);return !!it&&it.cat==='flavour'};
+const cupsOf=o=>o.lines.reduce((s,l)=>s+(isCupItem(l.itemId)?l.qty:0),0);
+const cupsIn=ords=>ords.reduce((s,o)=>s+cupsOf(o),0);
+const cupTxt=n=>`${n} cup${n===1?'':'s'}`;
 const myName=()=>CLOUD&&me?{name:me.name}:{};
 // Firebase signs in with an email, so a username becomes a hidden email on this project's own domain:
 // "aina" signs in as aina@<authDomain>. Nothing is ever sent to that address.
@@ -719,7 +724,7 @@ function vCashier(m){
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
     <aside class="ticket ${lines.length&&(remarkOpen||cartNote)?'has-remark':''}">${stamp}
-      <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${count?`${count} item${count===1?'':'s'}<button class="ghost sm" data-act="clear">Clear</button>`:`${nToday} orders today`}</span></div>
+      <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${count?`${cupTxt(lines.reduce((s,[id,q])=>s+(isCupItem(id)?q:0),0))}<button class="ghost sm" data-act="clear">Clear</button>`:`${nToday} orders today`}</span></div>
       ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${esc(lo.id)}">Undo</button></div>`:''}
       <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line ${fx.pop===id&&fx.newLine?'slide':''}">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
@@ -753,7 +758,7 @@ function vOrders(m){
     <div class="stats s3">
       <div class="stat"><span>${pl}Orders</span><b>${live.length}</b>${list.length-live.length?`<small>${list.length-live.length} voided</small>`:''}</div>
       ${role==='admin'?`<div class="stat"><span>${pl}Sales</span><b>${rm(sales)}</b>${ordPay==='all'&&payLine(live,money0)?`<small>${payLine(live,money0)}</small>`:''}</div>`:''}
-      <div class="stat"><span>Items sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
+      <div class="stat"><span>${pl}Cups</span><b>${cupsIn(live)}</b><small>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)} items incl. add ons</small></div>
     </div>
     ${day.length?`<div class="chips payfilter" role="group" aria-label="Filter by payment">${pf.map(f=>`<button class="chip ${f.k===ordPay?'on':''}" data-act="opay" data-id="${f.k}" aria-pressed="${f.k===ordPay}">${f.k!=='all'&&f.k!=='none'?`<i class="pdot ${f.k}"></i>`:''}${f.l} <span class="cnt">${f.n}${role==='admin'&&f.k!=='all'?' · '+rm(f.v):''}</span></button>`).join('')}</div>`:''}
     <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${esc(o.id)}">
@@ -871,6 +876,7 @@ function vDash(m){
       <div class="stat" style="--i:1"><span>Expenses</span><b data-n="${cost}" data-fmt="rm">${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
       <div class="stat" style="--i:2"><span>Profit</span><b class="${profit>=0?'pos-v':'neg-v'}" data-n="${profit}" data-fmt="rm">${profit<0?'−':''}${rm(Math.abs(profit))}</b><small>${sales?Math.round(profit/sales*100)+'% of sales':'—'}</small>${trend(profit,P.profit,true)}</div>
       <div class="stat" style="--i:3"><span>Orders</span><b data-n="${ords.length}" data-fmt="int">${ords.length}</b><small>avg ${ords.length?rm(sales/ords.length):'—'}</small>${trend(ords.length,P.ords.length,true)}</div>
+      <div class="stat" style="--i:4"><span>Cups</span><b data-n="${cupsIn(ords)}" data-fmt="int">${cupsIn(ords)}</b><small>${ords.length?(cupsIn(ords)/ords.length).toFixed(1)+' per order':'—'}</small>${trend(cupsIn(ords),cupsIn(P.ords),true)}</div>
     </div>
     ${goal}
     ${daily}
@@ -1039,7 +1045,7 @@ function periodSummary(a,b){
   if(payLine(T.ords,rm))L.push(payLine(T.ords,rm));
   L.push(`Expenses: ${rm(T.cost)}${pctTxt(T.cost,P.cost)}`);
   L.push(`*Profit: ${T.profit<0?'-':''}${rm(Math.abs(T.profit))}*${T.sales?` (${Math.round(T.profit/T.sales*100)}% of sales)`:''}`);
-  L.push(`Orders: ${T.ords.length}${T.ords.length?` · avg ${rm(T.sales/T.ords.length)}`:''}`,`Items sold: ${items}`);
+  L.push(`Orders: ${T.ords.length}${T.ords.length?` · avg ${rm(T.sales/T.ords.length)}`:''}`,`Cups: ${cupsIn(T.ords)}`,`Items sold: ${items}`);
   if(prods.length){L.push('','*By flavour*');prods.forEach(p=>L.push(`• ${p.name} ×${p.qty} = ${rm(p.rev)}`))}
   const extra=[];
   if(n>1){
@@ -1060,7 +1066,7 @@ function closeSheet(date){closing={date,rep:false,bak:false};drawClose()}
 function drawClose(){
   const {date,rep,bak}=closing, live=S.orders.filter(o=>o.date===date&&!o.voided), sales=live.reduce((s,o)=>s+o.total,0), done=S.closed&&S.closed[date];
   openModal(`<h2>Close day</h2>
-    <p class="note">${parse(date).toLocaleDateString('en-MY',{weekday:'long',day:'numeric',month:'long'})} · ${live.length} orders · ${rm(sales)}${payLine(live,rm)?`<br><b>Cash to count: ${rm(payTotals(live).cash)}</b> · Online ${rm(payTotals(live).online)}`:''}${done?` · closed at ${tm(done.ts)}`:''}</p>
+    <p class="note">${parse(date).toLocaleDateString('en-MY',{weekday:'long',day:'numeric',month:'long'})} · ${live.length} orders · ${cupTxt(cupsIn(live))} · ${rm(sales)}${payLine(live,rm)?`<br><b>Cash to count: ${rm(payTotals(live).cash)}</b> · Online ${rm(payTotals(live).online)}`:''}${done?` · closed at ${tm(done.ts)}`:''}</p>
     <div class="csteps">
       <div class="cstep ${rep?'done':''}"><span class="cnum">${rep?TICK:'1'}</span><div class="ctext"><b>Send day report</b><small>${rep?'Sent':'Choose WhatsApp to send it to the owner'}</small></div><button class="btn ${rep?'quiet':''}" data-act="closerep">${rep?'Again':'Send'}</button></div>
       <div class="cstep ${bak?'done':''}"><span class="cnum">${bak?TICK:'2'}</span><div class="ctext"><b>Save backup</b><small>${bak?'Saved':'Keep the file in WhatsApp or Google Drive'}</small></div><button class="btn ${bak?'quiet':''}" data-act="closebak">${bak?'Again':'Save'}</button></div>
@@ -1141,7 +1147,7 @@ function pdfReport(a,b){
   y=132;
   // summary tiles
   [['Sales',money(T.sales),INK],['Expenses',money(T.cost),INK],['Profit',money(T.profit),T.profit>=0?GOOD:BAD],
-   ['Orders',String(T.ords.length),INK],['Average order',T.ords.length?rm(T.sales/T.ords.length):'-',INK],['Items sold',String(items),INK]]
+   ['Orders',String(T.ords.length),INK],['Average order',T.ords.length?rm(T.sales/T.ords.length):'-',INK],['Cups',String(cupsIn(T.ords)),INK]]
   .forEach((t,i)=>{const cx=40+(i%3)*175,cy=y+Math.floor(i/3)*66;d.rect(cx,cy,165,56,SOFT);d.text(cx+12,cy+20,t[0].toUpperCase(),{size:8,bold:true,color:MUTED});d.text(cx+12,cy+43,t[1],{size:17,bold:true,color:t[2]})});
   y+=146;
   d.text(40,y,(T.sales?`Profit is ${Math.round(T.profit/T.sales*100)}% of sales.${payLine(T.ords,rm)?' '+payLine(T.ords,rm)+'.':''}`:'No sales in this period.')+(voided?` ${voided} voided order${voided===1?' is':'s are'} not counted.`:''),{size:9,color:MUTED});
@@ -1315,13 +1321,13 @@ function excel(a,b){
   const H=v=>({v,t:'h'}), M=v=>({v,t:'money'}), D=v=>({v,t:'date'}), B=v=>({v,t:'b'}), BM=v=>({v,t:'bm'}), BI=v=>({v,t:'bi'});
   const summary=[[{v:'Kepokkaw sales report',t:'title'}],['Period',a===b?dlong(a):dlong(a)+' – '+dlong(b)],['Exported',dlong(today())+', '+tm(Date.now())],[],
     [B('Sales'),BM(T.sales)],['Cash sales',M(payTotals(T.ords).cash)],['Online sales',M(payTotals(T.ords).online)],[B('Expenses'),BM(T.cost)],[B('Profit'),BM(T.profit)],
-    ['Orders',T.ords.length],['Voided orders',allO.length-T.ords.length],['Average order',M(T.ords.length?T.sales/T.ords.length:0)],['Items sold',portions],[],
+    ['Orders',T.ords.length],['Voided orders',allO.length-T.ords.length],['Average order',M(T.ords.length?T.sales/T.ords.length:0)],['Cups',cupsIn(T.ords)],['Items sold',portions],[],
     [H('Item'),H('Qty sold'),H('Sales'),H('Share of sales')],...prods.map(p=>[p.name,p.qty,M(p.rev),{v:T.sales?p.rev/T.sales:0,t:'pct'}]),[],
     [H('Expense category'),H('Amount')],...Object.entries(byCat).sort((x,y)=>y[1]-x[1]).map(([c,v])=>[c,M(v)])];
-  const daily=[[H('Date'),H('Day'),H('Orders'),H('Items'),H('Sales'),H('Expenses'),H('Profit')]];
+  const daily=[[H('Date'),H('Day'),H('Orders'),H('Cups'),H('Items'),H('Sales'),H('Expenses'),H('Profit')]];
   ds.forEach(d=>{const o=T.ords.filter(x=>x.date===d),sv=o.reduce((s,x)=>s+x.total,0),ev=T.exps.filter(x=>x.date===d).reduce((s,x)=>s+x.amount,0);
-    daily.push([D(d),DOW[parse(d).getDay()],o.length,o.reduce((s,x)=>s+qty(x),0),M(sv),M(ev),M(sv-ev)])});
-  daily.push([B('Total'),'',BI(T.ords.length),BI(portions),BM(T.sales),BM(T.cost),BM(T.profit)]);
+    daily.push([D(d),DOW[parse(d).getDay()],o.length,cupsIn(o),o.reduce((s,x)=>s+qty(x),0),M(sv),M(ev),M(sv-ev)])});
+  daily.push([B('Total'),'',BI(T.ords.length),BI(cupsIn(T.ords)),BI(portions),BM(T.sales),BM(T.cost),BM(T.profit)]);
   const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Payment'),H('Served by'),H('Status'),H('Void reason'),H('Remark')]];
   allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),PAY[o.pay]||'',o.name||(o.by==='admin'?'Admin':'Staff'),o.voided?'Voided':'Sold',o.voided?o.voided.reason:'',o.note||''])));
   const expenses=[[H('Date'),H('Category'),H('Amount'),H('Note')]];
@@ -1332,7 +1338,7 @@ function excel(a,b){
   (S.log||[]).filter(x=>{const k=bdate(x.ts);return k>=a&&k<=b}).forEach(x=>act.push([D(bdate(x.ts)),{v:x.ts,t:'time'},x.name||(x.by==='admin'?'Admin':'Staff'),x.action,x.detail]));
   const bytes=KKXLSX.build([
     {name:'Summary',cols:[26,30,14,16],rows:summary},
-    {name:'Daily',cols:[14,8,10,10,14,14,14],freeze:true,rows:daily},
+    {name:'Daily',cols:[14,8,10,8,10,14,14,14],freeze:true,rows:daily},
     {name:'Orders',cols:[14,11,8,18,6,12,12,10,11,9,24,28],freeze:true,rows:orders},
     {name:'Expenses',cols:[14,20,14,32],freeze:true,rows:expenses},
     {name:'Stock',cols:[14,11,16,9,28],freeze:true,rows:stock},
@@ -1346,6 +1352,8 @@ function dayReport(date){
   L.push(`Orders: ${live.length}${all.length-live.length?` (${all.length-live.length} voided)`:''}`,`*Sales: ${rm(sales)}*`);
   if(payLine(live,rm))L.push(payLine(live,rm));
   if(prods.length){L.push('','*Sold*');prods.forEach(p=>L.push(`• ${p.name} ×${p.qty} = ${rm(p.rev)}`));L.push(`Total items: ${prods.reduce((s,p)=>s+p.qty,0)}`)}
+  L.push(`Cups: ${cupsIn(live)}`);
+
   if(role==='admin'){
     const ex=S.expenses.filter(e=>e.date===date), cost=ex.reduce((s,e)=>s+e.amount,0);
     L.push('',`*Expenses: ${rm(cost)}*`);ex.forEach(e=>L.push(`• ${e.cat}${e.note?' ('+e.note+')':''} = ${rm(e.amount)}`));

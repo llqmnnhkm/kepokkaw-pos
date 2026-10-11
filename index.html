@@ -950,12 +950,13 @@ function vSettings(m){
       <div class="panel"><h3>Data</h3>${CLOUD?`<p class="note" style="margin-bottom:12px">${syncText()}</p>`:''}
         <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
           <button class="btn" data-act="backup">Back up everything</button>
+          <button class="btn quiet" data-act="mergeask">Merge from backup</button>
           <button class="btn quiet" data-act="restore">Restore from backup</button>
           <button class="btn dark" data-act="export">Excel report (all data)</button>
           <div class="field"><label for="target">Daily sales target</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="target" value="${S.target||''}" placeholder="Off"></span></div>
           <div class="field"><label for="lowAt">Warn when stock is at or below</label><input class="inp" type="number" min="0" id="lowAt" value="${S.lowAt}"></div>
         </div>
-        <p class="note" style="margin-top:10px">${CLOUD?'Sales are saved in the cloud and shared by every signed in device. A backup file is still a good extra copy. ':''}<b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Restore</b> puts it back on a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>
+        <p class="note" style="margin-top:10px">${CLOUD?'Sales are saved in the cloud and shared by every signed in device. A backup file is still a good extra copy. ':''}<b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Merge</b> adds the orders, expenses and stock changes from a backup that aren't saved here yet, and keeps everything already here. <b>Restore</b> replaces everything with the backup, for a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>
         <input type="file" id="restoreFile" hidden>
         <div class="chips" style="margin-top:12px" ${CLOUD?'hidden':''}>
           ${S.sample?'<button class="btn" data-act="clearsample">Clear sample data</button>':''}
@@ -1319,15 +1320,39 @@ function backup(){
   const ts=Date.now(),body=JSON.stringify({app:'kepokkaw-pos',exported:ts,data:Object.assign({},S,{lastBackup:ts})});
   return saveFile(`kepokkaw-backup-${today()}.json`,body,'application/json').then(ok=>{if(ok){S.lastBackup=ts;logA('Saved backup','');save();render();toast('Backup saved')}return ok});
 }
-function restoreFrom(file){
+function restoreFrom(file,merge){
   const rd=new FileReader();
   rd.onload=()=>{
     let b;try{b=JSON.parse(rd.result)}catch(e){toast('That file is not a Kepokkaw backup');return}
     const d=b&&b.app==='kepokkaw-pos'&&b.data;
     if(!d||!Array.isArray(d.items)||!Array.isArray(d.orders)||!Array.isArray(d.expenses)){toast('That file is not a Kepokkaw backup');return}
+    if(merge)return mergeFrom(d,b);
     ask('Restore this backup?',`Backup from ${dlabel(dkey(new Date(b.exported)))}, ${tm(b.exported)} with ${d.orders.length} orders and ${d.expenses.length} expenses. ${CLOUD?'Everything in the cloud is replaced, on every device.':'Everything on this device is replaced.'}`,'Restore',()=>{S=CLOUD?Object.assign(d,{sample:false}):d;S.moves=S.moves||[];S.log=S.log||[];S.closed=S.closed||{};if(!S.pins)S.pins={admin:'1234',staff:'0000'};cart={};logA('Restored backup','from '+dlabel(dkey(new Date(b.exported)))+', '+tm(b.exported));save();render();toast('Backup restored')});
   };
   rd.readAsText(file);
+}
+// Merge: add only what this device or the cloud doesn't have yet. Nothing already here is changed or removed.
+function mergeFrom(d,b){
+  if(d.sample){toast('That backup only has sample data');return}
+  const ids=a=>new Set((a||[]).map(x=>x.id));
+  const mk=m=>[m.ts,m.itemId,m.delta,m.reason].join('|'), lk=x=>[x.ts,x.action,x.detail].join('|');
+  const ho=ids(S.orders), he=ids(S.expenses), hi=ids(S.items), hm=new Set((S.moves||[]).map(mk)), hl=new Set((S.log||[]).map(lk)), hc=S.closed||{};
+  const newO=d.orders.filter(o=>o&&o.id&&o.date&&!ho.has(o.id)), newE=d.expenses.filter(e=>e&&e.id&&e.date&&!he.has(e.id));
+  const newI=d.items.filter(i=>i&&i.id&&!hi.has(i.id)), newM=(d.moves||[]).filter(m=>m&&m.itemId&&!hm.has(mk(m)));
+  const newL=(d.log||[]).filter(x=>x&&x.ts&&!hl.has(lk(x))), newC=Object.entries(d.closed||{}).filter(([k])=>!hc[k]);
+  if(!newO.length&&!newE.length&&!newI.length&&!newM.length){toast('Nothing new in this file');return}
+  const clash=newO.filter(o=>S.orders.some(x=>x.date===o.date&&x.no===o.no)).length;
+  const parts=[`${newO.length} order${newO.length===1?'':'s'}`,`${newE.length} expense${newE.length===1?'':'s'}`];
+  if(newM.length)parts.push(`${newM.length} stock change${newM.length===1?'':'s'}`);
+  if(newI.length)parts.push(`${newI.length} menu item${newI.length===1?'':'s'}`);
+  ask('Merge this backup?',`Backup from ${dlabel(dkey(new Date(b.exported)))}, ${tm(b.exported)}. Adds ${parts.join(', ')}${CLOUD?' to the cloud, for every device':''}. Nothing already saved is changed or removed.${clash?` ${clash} of the new orders use an order number already taken that day; both are kept.`:''}`,'Merge',()=>{
+    S.orders.push(...newO);S.expenses.push(...newE);
+    newI.forEach(i=>S.items.push(Object.assign({},i,{qty:0})));
+    S.moves=S.moves||[];newM.forEach(m=>{S.moves.push(m);const it=item(m.itemId);if(it)it.qty=(+it.qty||0)+(+m.delta||0)});
+    S.log=S.log||[];S.log.push(...newL);S.log.sort((x,y)=>x.ts-y.ts);
+    S.closed=S.closed||{};newC.forEach(([k,v])=>S.closed[k]=v);
+    logA('Merged backup',`from ${dlabel(dkey(new Date(b.exported)))}: ${parts.join(', ')}`);save();render();toast(`Merged ${parts.join(', ')}`);
+  });
 }
 
 document.addEventListener('click',e=>{
@@ -1418,7 +1443,8 @@ document.addEventListener('click',e=>{
       b.disabled=true;
       cloud.addMember(em,pw,nm,rl).then(()=>{logA('Added person',`${nm} (${shown(em)}) as ${rl==='admin'?'Admin':'Staff'}`);save();render();toast(`${nm} added. Sign in with ${shown(em)} and the password you set.`)},err=>{b.disabled=false;toast(authMsg(err))});
       break}
-    case 'restore':$('restoreFile').value='';$('restoreFile').click();break;
+    case 'restore':$('restoreFile').value='';$('restoreFile').dataset.merge='';$('restoreFile').click();break;
+    case 'mergeask':$('restoreFile').value='';$('restoreFile').dataset.merge='1';$('restoreFile').click();break;
     case 'clearsample':if(CLOUD)break;ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;S.log=[];S.closed={};cart={};logA('Cleared sample data','');save();render();toast('Sample data cleared')});break;
     case 'restoresample':if(CLOUD)break;ask('Load sample data?','This replaces everything recorded on this device with 14 days of made-up sales.','Load sample',()=>{S=seed();cart={};logA('Loaded sample data','');save();render();toast('Sample data loaded')});break;
   }
@@ -1440,7 +1466,8 @@ document.addEventListener('change',e=>{
     const nr=t.value,label={admin:'Admin',staff:'Staff',removed:'Removed'};
     cloud.setRole(u.uid,nr).then(()=>{logA('Changed role',`${u.name||shown(u.email)}: ${label[u.role]||u.role} → ${label[nr]}`);save();toast('Saved')},err=>{t.value=u.role;toast(authMsg(err))});
     return}
-  if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0]);return}
+  if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0],t.dataset.merge==='1');return}
+
   if(t.id==='dFrom'||t.id==='dTo'){
     const tt=today();let a=$('dFrom').value||tt,b=$('dTo').value||a;
     if(a>tt)a=tt;if(b>tt)b=tt;if(a>b){if(t.id==='dFrom')b=a;else a=b}

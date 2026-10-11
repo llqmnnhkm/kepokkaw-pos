@@ -309,6 +309,12 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .cal-d.hot{color:var(--on-red)}
 .cal-d.fut{opacity:.35;cursor:default}
 .cal-d.now{box-shadow:inset 0 0 0 2px var(--ink)}
+.cal-d.sel{box-shadow:inset 0 0 0 3px var(--ink),0 0 0 2px var(--red)}
+.daterow{display:flex;flex-wrap:wrap;align-items:end;gap:8px;background:var(--surface);border-radius:16px;box-shadow:inset 0 0 0 1px var(--line);padding:12px}
+.daterow .field{flex:1 1 150px}
+.daterow .chip{height:48px;min-width:48px;font-size:18px;padding:0 14px}
+.daterow .btn{flex:none}
+@media (max-width:600px){.daterow{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr) 44px;gap:6px;padding:10px}.daterow .btn{grid-column:1 / -1}.daterow .chip{min-width:44px;padding:0}.daterow .inp{padding:0 6px;font-size:14px}.periods{position:relative}}
 .cal-key{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
 .cal-key i{width:14px;height:14px;border-radius:4px;background:var(--red);display:inline-block}
 .cal-key .z{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)}
@@ -623,6 +629,7 @@ function render(){
   if(nb)$('backupBar').innerHTML=`<b>${S.lastBackup?'Last backup '+dlabel(dkey(new Date(S.lastBackup)))+'.':'No backup yet.'}</b> Save a copy of your sales in case this device is lost. <button class="ghost" data-act="backup" style="padding:4px 10px;margin-left:6px">Back up now</button>`;
   const m=$('main'), entering=view!==renderedView||fx.enter;renderedView=view;
   ({cashier:vCashier,orders:vOrders,dashboard:vDash,expenses:vExpenses,stock:vStock,settings:vSettings})[view](m);
+  const per=m.querySelector('.periods'),pon=per&&per.querySelector('.chip.on');if(pon&&per.scrollWidth>per.clientWidth)per.scrollLeft=pon.offsetLeft-per.clientWidth/2+pon.offsetWidth/2;
   if(entering&&m.firstElementChild){m.firstElementChild.classList.add('enter');if(MOTION)countUp(m)}
   fx={};
 }
@@ -701,12 +708,15 @@ function vOrders(m){
 
 const PERIODS=[['today','Today'],['yesterday','Yesterday'],['7d','7 days'],['30d','30 days'],['month','This month'],['lastmonth','Last month']];
 const PREV_LABEL={today:'yesterday',yesterday:'day before','7d':'prev 7 days','30d':'prev 30 days',month:'last month',lastmonth:'month before'};
+function prevLabel(){if(dashP!=='custom')return PREV_LABEL[dashP];const [a,b]=range('custom'),n=days(a,b).length;return n===1?'day before':`prev ${n} days`}
 const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], DOW_LONG=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const hl=h=>h===0||h===24?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
 const money0=n=>'RM '+Math.round(n).toLocaleString('en-MY');
 const dlong=k=>parse(k).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'});
+let dashFrom=null, dashTo=null;
 function range(p){
   const t=today(),ms=t.slice(0,8)+'01';
+  if(p==='custom'){if(!dashFrom||!dashTo){dashFrom=dashTo=t}return[dashFrom,dashTo]}
   if(p==='today')return[t,t];
   if(p==='yesterday'){const y=addDays(t,-1);return[y,y]}
   if(p==='7d')return[addDays(t,-6),t];
@@ -727,7 +737,7 @@ function totals(a,b){
 function trend(cur,prev,goodUp){
   if(!prev)return'';
   const p=(cur-prev)/Math.abs(prev)*100, up=cur>=prev, good=goodUp?up:!up;
-  return `<small class="trend ${good?'up':'down'}">${up?'▲':'▼'} ${Math.abs(Math.round(p))}% vs ${PREV_LABEL[dashP]}</small>`;
+  return `<small class="trend ${good?'up':'down'}">${up?'▲':'▼'} ${Math.abs(Math.round(p))}% vs ${prevLabel()}</small>`;
 }
 function itemTotals(ords){
   const per={};ords.forEach(o=>o.lines.forEach(l=>{const p=per[l.itemId]||(per[l.itemId]={id:l.itemId,name:l.name,qty:0,rev:0});p.qty+=l.qty;p.rev+=l.price*l.qty}));
@@ -791,7 +801,14 @@ function vDash(m){
       <button class="btn quiet" data-act="sumshare"><span class="ll">Share summary</span><span class="sl">Share</span></button>
       <button class="btn quiet" data-act="pdf">PDF</button>
       <button class="btn dark" data-act="xlsx">Excel</button></div></div>
-    <div class="chips periods">${PERIODS.map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('')}</div>
+    <div class="chips periods">${PERIODS.map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('')}<button class="chip ${dashP==='custom'?'on':''}" data-act="dash" data-id="custom">Pick date</button></div>
+    ${dashP==='custom'?`<div class="daterow">
+      <button class="chip" data-act="dstep" data-id="-1" aria-label="Earlier">‹</button>
+      <div class="field"><label for="dFrom">From</label><input class="inp" type="date" id="dFrom" value="${a}" max="${today()}"></div>
+      <div class="field"><label for="dTo">To</label><input class="inp" type="date" id="dTo" value="${b}" max="${today()}"></div>
+      <button class="chip" data-act="dstep" data-id="1" aria-label="Later" ${b>=today()?'disabled':''}>›</button>
+      ${a===b?`<button class="btn quiet" data-act="dayorders">View orders for ${dlabel(a)}</button>`:''}
+    </div>`:''}
     <div class="stats">
       <div class="stat" style="--i:0"><span>Sales</span><b data-n="${sales}" data-fmt="rm">${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${trend(sales,P.sales,true)}</div>
       <div class="stat" style="--i:1"><span>Expenses</span><b data-n="${cost}" data-fmt="rm">${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
@@ -956,7 +973,7 @@ function textSheet(title,text){
     <textarea id="repOut" readonly style="font-family:var(--body);font-size:14px;min-height:300px">${esc(text)}</textarea>
     <div class="acts"><button class="btn quiet" data-act="close">Close</button><button class="btn quiet" data-act="copyrep">Copy</button><button class="btn" data-act="sendrep">Send</button></div>`);
 }
-function pctTxt(cur,prev){if(!prev)return'';const p=Math.round((cur-prev)/Math.abs(prev)*100);return ` (${p>=0?'+':''}${p}% vs ${PREV_LABEL[dashP]})`}
+function pctTxt(cur,prev){if(!prev)return'';const p=Math.round((cur-prev)/Math.abs(prev)*100);return ` (${p>=0?'+':''}${p}% vs ${prevLabel()})`}
 function periodSummary(a,b){
   const T=totals(a,b),[pa,pb]=prevRange(dashP,a,b),P=totals(pa,pb),prods=itemTotals(T.ords),n=days(a,b).length,items=prods.reduce((s,p)=>s+p.qty,0);
   const L=['*KEPOKKAW* · Sales summary',a===b?parse(a).toLocaleDateString('en-MY',{weekday:'short',day:'numeric',month:'short',year:'numeric'}):`${dlong(a)} – ${dlong(b)} (${n} days)`,''];
@@ -1010,14 +1027,14 @@ function calendarPanel(b){
   let cells='';for(let i=0;i<off;i++)cells+='<span></span>';
   for(let n=1;n<=dim;n++){
     const k=ym+'-'+pad(n), v=by[k]||0, fut=k>t, a=v?.18+.82*v/mx:0;
-    cells+=`<button class="cal-d ${a>.55?'hot':''} ${fut?'fut':''} ${k===t?'now':''}" style="--i:${n}" data-act="calday" data-id="${k}" ${fut?'disabled':''} title="${dlabel(k)}: ${rm(v)}"><i style="opacity:${a.toFixed(2)}"></i><span class="dn">${n}</span><span class="dv">${v?shortRM(v):''}</span></button>`;
+    cells+=`<button class="cal-d ${a>.55?'hot':''} ${fut?'fut':''} ${k===t?'now':''} ${dashP==='custom'&&k>=dashFrom&&k<=dashTo?'sel':''}" style="--i:${n}" data-act="calday" data-id="${k}" ${fut?'disabled':''} title="${dlabel(k)}: ${rm(v)}"><i style="opacity:${a.toFixed(2)}"></i><span class="dn">${n}</span><span class="dv">${v?shortRM(v):''}</span></button>`;
   }
   const nextYm=(()=>{const d=parse(first);d.setMonth(d.getMonth()+1);return dkey(d).slice(0,7)})();
   return `<div class="panel">
     <div class="calhead"><button class="chip" data-act="calnav" data-id="-1" aria-label="Previous month">‹</button><h3>${d0.toLocaleDateString('en-MY',{month:'long',year:'numeric'})}</h3><button class="chip" data-act="calnav" data-id="1" aria-label="Next month" ${nextYm>t.slice(0,7)?'disabled':''}>›</button></div>
     <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span class="cal-h">${d}</span>`).join('')}${cells}</div>
     <div class="cal-key">Less <i class="z"></i><i style="opacity:.25"></i><i style="opacity:.5"></i><i style="opacity:.75"></i><i></i> More<span style="margin-left:auto">${vals.length?`${money0(tot)} this month · best day ${parse(bestE[0]).toLocaleDateString('en-MY',{day:'numeric',month:'short'})} (${money0(bestE[1])})`:'No sales this month'}</span></div>
-    <p class="note" style="margin-top:6px">Tap a day to see its orders.</p>
+    <p class="note" style="margin-top:6px">Tap a day to see that day's dashboard.</p>
   </div>`;
 }
 
@@ -1353,7 +1370,9 @@ document.addEventListener('click',e=>{
     case 'sumshare':{const [a,b]=range(dashP);textSheet('Sales summary',periodSummary(a,b));break}
     case 'pdf':{const [a,b]=range(dashP);pdfReport(a,b);break}
     case 'calnav':{const d=parse((calMonth||range(dashP)[1].slice(0,7))+'-01');d.setMonth(d.getMonth()+(+id));calMonth=dkey(d).slice(0,7);render();break}
-    case 'calday':ordDate=id;view='orders';render();$('main').scrollTop=0;break;
+    case 'calday':dashP='custom';dashFrom=dashTo=id;fx.enter=true;render();$('main').scrollTo({top:0,behavior:MOTION?'smooth':'auto'});break;
+    case 'dstep':{const [a,b]=range('custom'),n=days(a,b).length*(+id);let na=addDays(a,n),nb=addDays(b,n);if(nb>today()){nb=today();na=addDays(nb,-(days(a,b).length-1))}dashFrom=na;dashTo=nb;calMonth=null;fx.enter=true;render();break}
+    case 'dayorders':ordDate=range('custom')[0];view='orders';render();$('main').scrollTop=0;break;
     case 'reload':if(Object.keys(cart).length)ask('Reload now?','The order on the cashier screen is not finished and will be cleared.','Reload',()=>location.reload());else location.reload();break;
     case 'restore':$('restoreFile').value='';$('restoreFile').click();break;
     case 'clearsample':ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;S.log=[];S.closed={};cart={};logA('Cleared sample data','');save();render();toast('Sample data cleared')});break;
@@ -1373,6 +1392,10 @@ document.addEventListener('change',e=>{
     if(v)o.note=v;else delete o.note;
     logA('Edited remark','#'+o.no+' ('+dlabel(o.date)+'): '+(old||'none')+' → '+(v||'none'));save();render();toast('Remark saved');return}
   if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0]);return}
+  if(t.id==='dFrom'||t.id==='dTo'){
+    const tt=today();let a=$('dFrom').value||tt,b=$('dTo').value||a;
+    if(a>tt)a=tt;if(b>tt)b=tt;if(a>b){if(t.id==='dFrom')b=a;else a=b}
+    dashFrom=a;dashTo=b;calMonth=null;fx.enter=true;render();return}
   if(t.id==='ordDate'){ordDate=t.value&&t.value<=today()?t.value:today();render();return}
   if(t.id==='expMonth'){expMonth=t.value||today().slice(0,7);render();return}
   if(t.id==='target'){const v=parseFloat(t.value),old=S.target||0;S.target=v>0?Math.round(v):0;if(old!==S.target)logA('Changed daily target',(old?rm(old):'off')+' → '+(S.target?rm(S.target):'off'));save();toast(S.target?'Target saved':'Target turned off');return}

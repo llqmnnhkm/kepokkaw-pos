@@ -179,7 +179,22 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .btn.del{background:var(--bad);color:var(--on-red)}
 .btn:disabled{opacity:.35;cursor:default}
 .del-list{background:var(--surface-2);border-radius:12px;padding:4px 12px}
-.menu-row{display:grid;grid-template-columns:minmax(0,2fr) 90px minmax(0,1.2fr) auto auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.menu-row{display:grid;grid-template-columns:minmax(0,2fr) 110px minmax(0,1.2fr) 100px 116px 48px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.menu-head{padding:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.menu-head span{padding-left:2px}
+.mf{display:block;min-width:0}
+.daynav{display:flex;gap:6px;align-items:center}
+.mfl{display:none}
+.money{position:relative;display:block}
+.money .cur{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700;font-size:13px;letter-spacing:.04em;pointer-events:none}
+.money .inp{padding-left:40px}
+.tile.addon{flex-direction:row;align-items:center;justify-content:space-between;min-height:64px;padding:12px 16px}
+.tile.addon .sw{display:none}
+.tile.addon .tname{font-size:clamp(16px,3.4vw,22px)}
+.tile.addon .tname::before{content:"+ ";color:var(--red)}
+.tile.addon .tmeta{flex:none}
+.tile.addon .tprice{white-space:nowrap}
+.tile.addon .badge{top:-8px;right:-6px;min-width:26px;height:26px;border-radius:13px;font-size:15px;padding:0 6px}
 .menu-row:last-child{border-bottom:0}
 .tog{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
 .tog input{width:20px;height:20px;accent-color:var(--red)}
@@ -325,7 +340,9 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
   .lines{min-height:0}
   .lines .empty{padding:14px 8px}
   .two{grid-template-columns:1fr}
-  .menu-row{grid-template-columns:minmax(0,1fr) 80px;}
+  .menu-row{grid-template-columns:minmax(0,1fr) 120px;}
+  .menu-head{display:none}
+  .mfl{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 }
 @media (max-width:480px){
   main{padding-top:12px}
@@ -349,6 +366,110 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
   .keys{grid-template-columns:repeat(3,70px)}
   .keys button{height:70px}
 }
+
+/* ---------- fluid sizes: text scales between phone and iPad ---------- */
+.h1{font-size:clamp(26px,6vw,34px)}
+.stat b{font-size:clamp(22px,5.4vw,34px)}
+.amt{font-size:clamp(30px,8vw,50px)}
+.tname{font-size:clamp(18px,4.4vw,30px)}
+.ghost.sm{padding:4px 10px;font-size:13px;margin-left:6px}
+.btabs{display:none}
+.lock svg{display:none}
+.sample .short{display:none}
+.sl{display:none}
+
+/* ---------- phone layout ---------- */
+@media (max-width:600px){
+  /* slim header, tabs move to the bottom */
+  .top{flex-wrap:nowrap;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 8px max(14px,env(safe-area-inset-left,0px))}
+  .top .tabs{display:none}
+  .brand{font-size:22px}
+  .brand small{display:none}
+  .who{margin-left:auto;gap:6px}
+  .role{font-size:11px;padding:4px 9px}
+  .lock{width:38px;height:38px;padding:0;border-radius:50%;display:grid;place-items:center}
+  .lock svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .lock .lbl{display:none}
+  .checker{height:8px;background-size:16px 16px}
+  .sample{padding:6px 14px;font-size:12px}
+  .sample .long{display:none}
+  .sample .short{display:inline}
+  .ll{display:none}
+  .sl{display:inline}
+  main{padding:12px max(12px,env(safe-area-inset-right,0px)) 12px max(12px,env(safe-area-inset-left,0px))}
+
+  .btabs{display:grid;grid-template-columns:repeat(var(--n,6),minmax(0,1fr));background:var(--surface);border-top:1px solid var(--line);padding:4px max(4px,env(safe-area-inset-left,0px)) calc(4px + env(safe-area-inset-bottom,0px));flex:none}
+  .btabs button{background:none;border:0;color:var(--muted);display:grid;justify-items:center;gap:2px;padding:6px 0 4px;font-size:10.5px;font-weight:600;min-width:0;border-radius:12px}
+  .btabs button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .btabs button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .btabs button.on{color:var(--red)}
+  .btabs button.on svg{stroke-width:2.3}
+
+  /* cashier: every flavour on screen, order panel takes the rest */
+  .pos{display:flex;flex-direction:column;gap:10px;height:100%}
+  .tiles{flex:0 0 auto;max-height:calc(100% - 200px);overflow:auto;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:8px 6px 2px 0;margin:-8px -6px 0 0}
+  .tile{display:grid;grid-template-columns:30px minmax(0,1fr);grid-template-rows:auto auto;column-gap:10px;row-gap:2px;align-content:center;min-height:clamp(56px,10svh,92px);padding:8px 12px;border-radius:14px}
+  .tile .sw{grid-row:1 / span 2;align-self:center;width:30px;height:30px}
+  .tile .tname{font-size:clamp(17px,5vw,22px);line-height:.95;padding-right:26px}
+  .tile .tmeta{gap:6px}
+  .tprice{font-size:14px}
+  .tstock{font-size:12px}
+  .badge{min-width:28px;height:28px;border-radius:14px;font-size:17px;top:6px;right:6px;padding:0 6px}
+  .ticket,.ticket.has-remark{flex:1 1 auto;max-height:none;min-height:190px;border-radius:16px}
+  .ticket-head{padding:10px 14px 8px}
+  .ticket-head h2{font-size:21px}
+  .lines,.ticket.has-remark .lines{min-height:40px;padding:0 14px}
+  .lines .empty{padding:14px 8px}
+  .line{padding:6px 0}
+  .step button{width:40px;height:40px}
+  .remark{padding:6px 14px}
+  .undo{padding:6px 14px}
+  .sum{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px;padding:10px 14px 12px}
+  .sum .sum-row{flex-direction:column;align-items:flex-start;gap:0}
+  .sum .amt{font-size:clamp(26px,7.4vw,32px)}
+  .go{height:56px;font-size:clamp(18px,5.4vw,22px)}
+
+  /* screens */
+  .wrap{gap:12px}
+  .panel{padding:14px;border-radius:14px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .stats.s3{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+  .stats.s3 .stat b{font-size:clamp(18px,5vw,24px)}
+  .stat{padding:12px}
+  .stat b{white-space:nowrap}
+  .ordbar .chips{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .ordbar .daynav,.ordbar .chips > .note{grid-column:1 / -1}
+  .ordbar .daynav .inp{flex:1;min-width:0;width:auto}
+  .dashact{width:100%}
+  .dashact .btn{flex:1;padding:0 10px}
+  .periods{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-12px;padding-inline:12px}
+  .periods .chip{flex:none}
+  .form{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .form > .btn{grid-column:1 / -1}
+  .hrow{grid-template-columns:84px minmax(0,1fr) 78px}
+  .menu-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 84px;grid-template-areas:"name name price" "cat cat color" "act stk stk";gap:8px;padding:12px 0}
+  .menu-row > :nth-child(1){grid-area:name}
+  .menu-row > :nth-child(2){grid-area:price}
+  .menu-row > :nth-child(3){grid-area:cat}
+  .menu-row > :nth-child(4){grid-area:act}
+  .menu-row > :nth-child(5){grid-area:stk}
+  .menu-row > :nth-child(6){grid-area:color;justify-self:end}
+  .menu-head{display:none}
+  .mfl{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .tile.addon{display:flex;min-height:46px;padding:8px 12px}
+  .tile.addon .tname{font-size:15px;padding-right:0}
+  .tile.addon .badge{top:-8px;right:-6px;margin-top:0;min-width:24px;height:24px;border-radius:12px;font-size:14px}
+
+  /* sheets rise from the bottom like iOS */
+  .modal{align-items:end;justify-items:stretch;padding:0}
+  .sheet{width:100%;max-width:none;border-radius:22px 22px 0 0;padding:20px 16px calc(16px + env(safe-area-inset-bottom,0px));max-height:88svh}
+  .sheet .acts .btn{flex:1 1 auto}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}
+@media (max-width:600px) and (max-height:700px){
+  #sampleBar{display:none!important}
+  .ticket-head{padding:8px 14px 6px}
+}
 </style>
 </head>
 <body>
@@ -356,13 +477,14 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
   <header class="top">
     <div class="brand">Kepok Kaw<small>Cashier</small></div>
     <nav class="tabs" id="tabs"></nav>
-    <div class="who"><button class="themebtn" id="themeBtn" data-act="theme" aria-label="Switch light or dark"></button><span class="role" id="roleChip">Admin</span><button class="lock" data-act="lock" id="lockBtn">Switch user</button></div>
+    <div class="who"><button class="themebtn" id="themeBtn" data-act="theme" aria-label="Switch light or dark"></button><span class="role" id="roleChip">Admin</span><button class="lock" data-act="lock" id="lockBtn" aria-label="Switch user"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 9h5m-2-2 2 2-2 2"/></svg><span class="lbl">Switch user</span></button></div>
   </header>
   <div class="checker" aria-hidden="true"></div>
   <div class="sample upd" id="updateBar" hidden><span><b>New version ready.</b> Reload to start using it.</span><button class="ghost" data-act="reload">Reload</button></div>
-  <div class="sample" id="sampleBar" hidden><b>Sample data.</b> These are made-up sales from the last 14 days, so you can try the dashboard. Clear them in Settings before you use it for real.</div>
+  <div class="sample" id="sampleBar" hidden><b>Sample data.</b> <span class="long">These are made-up sales from the last 14 days, so you can try the dashboard. Clear them in Settings before you use it for real.</span><span class="short">Made-up sales. Clear them in Settings before real use.</span></div>
   <div class="sample" id="backupBar" hidden></div>
   <main id="main"></main>
+  <nav class="btabs" id="btabs" aria-label="Screens"></nav>
 </div>
 <div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="pin" id="pin" hidden></div>
@@ -479,11 +601,22 @@ function seed(){
   return s;
 }
 
+/* ---------- bottom tab icons (phones) ---------- */
+const TAB_ICON={
+  cashier:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+  orders:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+  dashboard:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M6 17v-6M11 17V5M16 17V9"/></svg>',
+  expenses:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M15.5 15h2.5"/></svg>',
+  stock:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>'};
+
 /* ---------- render ---------- */
 function allowed(v){return role==='admin'||STAFF_VIEWS.includes(v)}
 function render(){
   if(!allowed(view))view='cashier';
   $('tabs').innerHTML=VIEWS.filter(([v])=>allowed(v)).map(([v,l])=>`<button class="${v===view?'on':''}" data-act="view" data-id="${v}">${l}</button>`).join('');
+  const tv=VIEWS.filter(([v])=>allowed(v)), bt=$('btabs');bt.style.setProperty('--n',tv.length);
+  bt.innerHTML=tv.map(([v,l])=>`<button class="${v===view?'on':''}" data-act="view" data-id="${v}" aria-label="${l}" ${v===view?'aria-current="page"':''}>${TAB_ICON[v]}<span>${l}</span></button>`).join('');
   $('roleChip').textContent=role==='admin'?'Admin':'Staff';
   $('sampleBar').hidden=!S.sample;
   const nb=role==='admin'&&needsBackup();$('backupBar').hidden=!nb;
@@ -509,11 +642,11 @@ function fly(r,color){
 }
 
 function vCashier(m){
-  const items=S.items.filter(i=>i.active), t=today();
+  const items=S.items.filter(i=>i.active&&i.cat!=='addon').concat(S.items.filter(i=>i.active&&i.cat==='addon')), t=today();
   const nToday=S.orders.filter(o=>o.date===t&&!o.voided).length;
   const tiles=items.map((it,ti)=>{
     const q=cart[it.id]||0, out=it.stock&&it.qty<=0, low=it.stock&&it.qty<=S.lowAt;
-    return `<button class="tile ${q?'in':''} ${out?'out':''}" data-act="add" data-id="${it.id}" style="--sw:${esc(it.color||'#999')};--i:${ti}" aria-label="Add ${esc(it.name)}">
+    return `<button class="tile ${it.cat==='addon'?'addon':''} ${q?'in':''} ${out?'out':''}" data-act="add" data-id="${it.id}" style="--sw:${esc(it.color||'#999')};--i:${ti}" aria-label="Add ${esc(it.name)}">
       ${q?`<span class="badge ${fx.pop===it.id?'pop':''}">${q}</span>`:''}
       <span class="sw"></span>
       <span class="tname">${esc(it.name)}</span>
@@ -528,7 +661,7 @@ function vCashier(m){
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
     <aside class="ticket ${lines.length&&(remarkOpen||cartNote)?'has-remark':''}">${stamp}
-      <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${nToday} orders today</span></div>
+      <div class="ticket-head"><h2>Order #${nextNo(t)}</h2><span>${count?`${count} item${count===1?'':'s'}<button class="ghost sm" data-act="clear">Clear</button>`:`${nToday} orders today`}</span></div>
       ${showUndo?`<div class="undo ${fx.saved?'slide':''}"><span>Order #${lo.no} saved · ${rm(lo.total)}</span><button class="ghost" data-act="voidask" data-id="${lo.id}">Undo</button></div>`:''}
       <div class="lines">${lines.length?lines.map(([id,q])=>{const it=item(id);return`<div class="line ${fx.pop===id&&fx.newLine?'slide':''}">
           <div><div class="lname">${esc(it.name)}</div><div class="lsub">${q} × ${rm0(it.price)} = ${rm(it.price*q)}</div></div>
@@ -537,7 +670,6 @@ function vCashier(m){
       ${lines.length?`<div class="remark">${remarkOpen||cartNote?`<input class="inp" id="cartNote" placeholder="Remark, e.g. no sauce" value="${esc(cartNote)}" maxlength="120" autocomplete="off" aria-label="Remark for this order">
         <div class="rchips">${REMARKS.map(r=>`<button class="chip sm ${noteParts(cartNote).includes(r)?'on':''}" data-act="rchip" data-id="${r}">${r}</button>`).join('')}</div>`:'<button class="linkbtn" data-act="remark">+ Add remark</button>'}</div>`:''}
       <div class="sum">
-        <div class="sum-row"><span>${count} item${count===1?'':'s'}</span>${lines.length?'<button class="ghost" data-act="clear">Clear</button>':''}</div>
         <div class="sum-row"><span>Total</span><div class="amt ${bump?'bump':''}">${rm(total)}</div></div>
         <button class="go" data-act="complete" ${lines.length?'':'disabled'}>Complete order</button>
       </div>
@@ -551,11 +683,11 @@ function vOrders(m){
   const list=S.orders.filter(o=>o.date===ordDate).sort((a,b)=>b.ts-a.ts);
   const live=list.filter(o=>!o.voided), sales=live.reduce((s,o)=>s+o.total,0);
   m.innerHTML=`<div class="wrap">
-    <div class="bar"><h1 class="h1">Orders${S.closed&&S.closed[ordDate]?'<span class="pill closed">Closed</span>':''}</h1>
-      <div class="chips">${role==='admin'?`<button class="chip" data-act="oday" data-id="-1">‹ Prev</button><input class="inp" type="date" id="ordDate" value="${ordDate}" max="${t}" style="width:auto"><button class="chip" data-act="oday" data-id="1" ${ordDate>=t?'disabled':''}>Next ›</button>`:`<span class="note" style="align-self:center">Today, ${dlabel(t)}</span>`}
+    <div class="bar ordbar"><h1 class="h1">Orders${S.closed&&S.closed[ordDate]?'<span class="pill closed">Closed</span>':''}</h1>
+      <div class="chips">${role==='admin'?`<div class="daynav"><button class="chip" data-act="oday" data-id="-1">‹ Prev</button><input class="inp" type="date" id="ordDate" value="${ordDate}" max="${t}" style="width:auto"><button class="chip" data-act="oday" data-id="1" ${ordDate>=t?'disabled':''}>Next ›</button></div>`:`<span class="note" style="align-self:center">Today, ${dlabel(t)}</span>`}
       <button class="btn quiet" data-act="report">Day report</button><button class="btn" data-act="closeday">Close day</button></div>
     </div>
-    <div class="stats">
+    <div class="stats s3">
       <div class="stat"><span>Orders</span><b>${live.length}</b>${list.length-live.length?`<small>${list.length-live.length} voided</small>`:''}</div>
       ${role==='admin'?`<div class="stat"><span>Sales</span><b>${rm(sales)}</b></div>`:''}
       <div class="stat"><span>Items sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
@@ -655,11 +787,11 @@ function vDash(m){
 
   const best=prods[0];
   m.innerHTML=`<div class="wrap dash">
-    <div class="bar"><h1 class="h1">Dashboard</h1><div class="chips">
-      <button class="btn quiet" data-act="sumshare">Share summary</button>
+    <div class="bar"><h1 class="h1">Dashboard</h1><div class="chips dashact">
+      <button class="btn quiet" data-act="sumshare"><span class="ll">Share summary</span><span class="sl">Share</span></button>
       <button class="btn quiet" data-act="pdf">PDF</button>
       <button class="btn dark" data-act="xlsx">Excel</button></div></div>
-    <div class="chips">${PERIODS.map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('')}</div>
+    <div class="chips periods">${PERIODS.map(([k,l])=>`<button class="chip ${k===dashP?'on':''}" data-act="dash" data-id="${k}">${l}</button>`).join('')}</div>
     <div class="stats">
       <div class="stat" style="--i:0"><span>Sales</span><b data-n="${sales}" data-fmt="rm">${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${trend(sales,P.sales,true)}</div>
       <div class="stat" style="--i:1"><span>Expenses</span><b data-n="${cost}" data-fmt="rm">${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
@@ -694,7 +826,7 @@ function vExpenses(m){
       <div class="form">
         <div class="field"><label for="exDate">Date</label><input class="inp" type="date" id="exDate" value="${t}" max="${t}"></div>
         <div class="field"><label for="exCat">Category</label><select class="inp" id="exCat">${EXP_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
-        <div class="field"><label for="exAmt">Amount (RM)</label><input class="inp" type="number" inputmode="decimal" min="0" step="0.01" id="exAmt" placeholder="0.00"></div>
+        <div class="field"><label for="exAmt">Amount</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" step="0.01" id="exAmt" placeholder="0.00"></span></div>
         <div class="field"><label for="exNote">Note</label><input class="inp" id="exNote" placeholder="e.g. 2 bottles oil"></div>
         <button class="btn" data-act="addexp">Add expense</button>
       </div>
@@ -728,7 +860,7 @@ function vStock(m){
           ${role==='admin'?`
           <div class="form">
             <div class="field"><label for="rq-${it.id}">Packs received</label><input class="inp" type="number" inputmode="numeric" min="1" id="rq-${it.id}" placeholder="20"></div>
-            <div class="field"><label for="rc-${it.id}">Cost paid (RM)</label><input class="inp" type="number" inputmode="decimal" min="0" id="rc-${it.id}" placeholder="Optional"></div>
+            <div class="field"><label for="rc-${it.id}">Cost paid</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="rc-${it.id}" placeholder="Optional"></span></div>
             <button class="btn" data-act="receive" data-id="${it.id}">Add stock</button>
           </div>
           <p class="note">Cost paid is also saved as a "Frozen stock" expense.</p>
@@ -747,13 +879,14 @@ function vSettings(m){
     <div class="bar"><h1 class="h1">Settings</h1></div>
     <div class="panel"><h3>Menu</h3>
       <p class="note" style="margin-bottom:8px">Changes save straight away. Old orders keep the price they were sold at.</p>
+      <div class="menu-row menu-head" aria-hidden="true"><span>Item name</span><span>Price</span><span>Category</span><span>Cashier</span><span>Stock</span><span>Colour</span></div>
       ${S.items.map(it=>`<div class="menu-row">
-        <input class="inp" value="${esc(it.name)}" data-edit="${it.id}" data-f="name" aria-label="Name">
-        <input class="inp" type="number" inputmode="decimal" min="0" step="0.5" value="${it.price}" data-edit="${it.id}" data-f="price" aria-label="Price in RM">
-        <select class="inp" data-edit="${it.id}" data-f="cat" aria-label="Category">${[['flavour','Flavour'],['frozen','Frozen'],['addon','Add-on'],['other','Other']].map(([v,l])=>`<option value="${v}" ${it.cat===v?'selected':''}>${l}</option>`).join('')}</select>
+        <label class="mf"><span class="mfl">Item name</span><input class="inp" value="${esc(it.name)}" data-edit="${it.id}" data-f="name" placeholder="Item name" aria-label="Item name"></label>
+        <label class="mf"><span class="mfl">Price</span><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" step="0.5" value="${it.price}" data-edit="${it.id}" data-f="price" aria-label="Price in RM"></span></label>
+        <label class="mf"><span class="mfl">Category</span><select class="inp" data-edit="${it.id}" data-f="cat" aria-label="Category">${[['flavour','Flavour'],['frozen','Frozen'],['addon','Add-on'],['other','Other']].map(([v,l])=>`<option value="${v}" ${it.cat===v?'selected':''}>${l}</option>`).join('')}</select></label>
         <label class="tog"><input type="checkbox" data-edit="${it.id}" data-f="active" ${it.active?'checked':''}>On menu</label>
         <label class="tog"><input type="checkbox" data-edit="${it.id}" data-f="stock" ${it.stock?'checked':''}>Track stock</label>
-        <input type="color" value="${esc(it.color||'#999999')}" data-edit="${it.id}" data-f="color" aria-label="Colour" style="width:44px;height:44px;border:0;background:none;padding:0">
+        <label class="mf"><span class="mfl">Colour</span><input type="color" value="${esc(it.color||'#999999')}" data-edit="${it.id}" data-f="color" aria-label="Colour" style="width:44px;height:44px;border:0;background:none;padding:0"></label>
       </div>`).join('')}
       <div style="margin-top:12px"><button class="btn quiet" data-act="additem">+ Add item</button></div>
     </div>
@@ -771,7 +904,7 @@ function vSettings(m){
           <button class="btn" data-act="backup">Back up everything</button>
           <button class="btn quiet" data-act="restore">Restore from backup</button>
           <button class="btn dark" data-act="export">Excel report (all data)</button>
-          <div class="field"><label for="target">Daily sales target (RM)</label><input class="inp" type="number" inputmode="decimal" min="0" id="target" value="${S.target||''}" placeholder="Off"></div>
+          <div class="field"><label for="target">Daily sales target</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="target" value="${S.target||''}" placeholder="Off"></span></div>
           <div class="field"><label for="lowAt">Warn when stock is at or below</label><input class="inp" type="number" min="0" id="lowAt" value="${S.lowAt}"></div>
         </div>
         <p class="note" style="margin-top:10px"><b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Restore</b> puts it back on a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup?dlabel(dkey(new Date(S.lastBackup)))+', '+tm(S.lastBackup):'never'}</p>

@@ -1,0 +1,64 @@
+rules_version = '2';
+// Security rules for Kepokkaw Cashier. Paste into Firebase console: Firestore Database > Rules > Publish.
+// Roles live in users/{uid}.role: 'admin', 'staff' or 'removed'. Anything not allowed here is blocked.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasRole() { return signedIn() && exists(userDoc()) && get(userDoc()).data.role in ['admin', 'staff']; }
+    function isAdmin() { return hasRole() && get(userDoc()).data.role == 'admin'; }
+    // Staff may add or change records inside a map field, but never remove one (only admins delete).
+    function keepsKeys(f) {
+      return resource == null || !(f in resource.data)
+        || (f in request.resource.data && request.resource.data[f].keys().hasAll(resource.data[f].keys()));
+    }
+    function staffMapWrite(f) { return hasRole() && request.resource.data.keys().hasOnly([f]) && keepsKeys(f); }
+
+    // Who set the shop up. Readable before sign in so the app knows whether to offer "Set up the shop".
+    match /meta/owner {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && getAfter(userDoc()).data.role == 'admin';
+      allow update, delete: if false;
+    }
+    match /meta/shop { allow read: if hasRole(); allow write: if isAdmin(); }
+    match /meta/stock { allow read, create, update: if hasRole(); allow delete: if false; }
+    match /meta/closed { allow read, create, update: if hasRole(); allow delete: if isAdmin(); }
+
+    match /users/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow create: if (isAdmin() && !('owner' in request.resource.data)
+            && request.resource.data.role in ['admin', 'staff'])
+        // the very first account claims the shop, writing meta/owner in the same batch
+        || (signedIn() && request.auth.uid == uid
+            && !exists(/databases/$(database)/documents/meta/owner)
+            && getAfter(/databases/$(database)/documents/meta/owner).data.uid == uid
+            && request.resource.data.role == 'admin' && request.resource.data.owner == true);
+      // Admins change other people's roles. Nobody changes their own role or the owner's.
+      allow update: if isAdmin() && request.auth.uid != uid
+        && resource.data.get('owner', false) != true
+        && request.resource.data.get('owner', false) == false
+        && request.resource.data.role in ['admin', 'staff', 'removed'];
+      allow delete: if false;
+    }
+
+    match /weeks/{week} {
+      allow read: if hasRole();
+      allow create, update: if isAdmin() || staffMapWrite('o');
+      allow delete: if isAdmin();
+    }
+    match /moves/{month} {
+      allow read: if hasRole();
+      allow create, update: if isAdmin() || staffMapWrite('m');
+      allow delete: if isAdmin();
+    }
+    match /exp/{month} {
+      allow read, write: if isAdmin();
+    }
+    match /log/{month} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() || staffMapWrite('l');
+      allow delete: if false;
+    }
+  }
+}

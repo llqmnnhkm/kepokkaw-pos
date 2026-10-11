@@ -1,12 +1,16 @@
 // Keeps the whole app on the device so it opens with no internet.
-// Bump VERSION whenever any file below changes, so devices pick up the update.
-const VERSION = 'kepokkaw-v11';
+// Bump VERSION whenever any file below changes (firebase-config.js included), so devices pick up the update.
+// cache: 'reload' skips the browser's HTTP cache, so a new VERSION never stores an old copy of a file.
+const VERSION = 'kepokkaw-v12';
 const FILES = [
   './',
   './index.html',
   './manifest.webmanifest',
   './xlsx.js',
   './pdf.js',
+  './firebase-config.js',
+  './firebase.js',
+  './cloud.js',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -18,7 +22,7 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

@@ -1476,7 +1476,7 @@ function loginGate(mode){
     <input class="inp" id="gPw" type="password" placeholder="${setup?'Password, at least 6 characters':'Password'}" autocomplete="${setup?'new-password':'current-password'}">
     <p class="gate-msg" id="gMsg" role="status"></p>
     <button class="btn" type="submit">${setup?'Create owner account':'Sign in'}</button>
-    ${setup?'<button class="linkbtn" type="button" data-act="gmode" data-id="signin">I already have an account</button>':'<button class="linkbtn" type="button" data-act="gforgot">Forgot password?</button>'}
+    ${setup?'<button class="linkbtn" type="button" data-act="gmode" data-id="signin">I already have an account</button>':'<button class="linkbtn" type="button" data-act="gforgot">Forgot password?</button><button class="linkbtn" type="button" data-act="gmode" data-id="setup">First time? Set up the shop</button>'}
   </form>`);
 }
 function authMsg(e){
@@ -1537,7 +1537,8 @@ async function startCloud(){
   cloud=KKCloud.create(window.KEPOKKAW_FIREBASE,{
     getS:()=>S, bdate,
     onSignedOut:()=>{me=null;cloudReady=false;waitMenu=false;users=[];S=fresh();S.items=[];cart={};cartNote='';closeModal();updateSyncBar();
-      showGate('<p class="pin-hint">Loading…</p>');cloud.ownerExists().then(x=>loginGate(x===false?'setup':'signin'))},
+      showGate('<p class="pin-hint">Loading…</p>');cloud.ownerExists().then(x=>{loginGate(x===false?'setup':'signin');if(x===null)$('gMsg').textContent='Could not reach the shop database. Check the internet, and that the Firestore rules are published.'})},
+
     onNoAccess:email=>{cloudReady=false;closeModal();showGate(`<p class="pin-hint"><b>${esc(shown(email))}</b> is not on this shop's team, or was removed. Ask an admin to add you in Settings.</p><button class="btn" data-act="gsignout">Sign out</button>`)},
     onRole:m=>{const was=me;me=m;role=m.role;
       if(!was||was.role!==m.role){cloudReady=false;closeModal();showGate('<p class="pin-hint">Loading sales…</p>')}

@@ -550,6 +550,12 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const item=id=>S.items.find(i=>i.id===id);
 const who=r=>r.name?esc(r.name):(r.by==='admin'?'Admin':'Staff');
 const myName=()=>CLOUD&&me?{name:me.name}:{};
+// Firebase signs in with an email, so a username becomes a hidden email on this project's own domain:
+// "aina" signs in as aina@<authDomain>. Nothing is ever sent to that address.
+const USER_DOMAIN=CLOUD?'@'+String(window.KEPOKKAW_FIREBASE.authDomain||'kepokkaw.app').toLowerCase():'';
+function toLogin(v){v=String(v||'').trim().toLowerCase();if(!v)return '';if(v.includes('@'))return v;return /^[a-z0-9._]{3,20}$/.test(v)?v+USER_DOMAIN:null}
+const shown=e=>{e=String(e||'');return USER_DOMAIN&&e.toLowerCase().endsWith(USER_DOMAIN)?e.slice(0,-USER_DOMAIN.length):e};
+const BAD_USER='A username has 3 to 20 letters, numbers, dots or underscores, with no spaces.';
 function days(a,b){const o=[];for(let k=a;k<=b;k=addDays(k,1))o.push(k);return o}
 
 /* ---------- storage ---------- */
@@ -648,7 +654,7 @@ function render(){
   const tv=VIEWS.filter(([v])=>allowed(v)), bt=$('btabs');bt.style.setProperty('--n',tv.length);
   bt.innerHTML=tv.map(([v,l])=>`<button class="${v===view?'on':''}" data-act="view" data-id="${v}" aria-label="${l}" ${v===view?'aria-current="page"':''}>${TAB_ICON[v]}<span>${l}</span></button>`).join('');
   $('roleChip').textContent=role==='admin'?'Admin':'Staff';
-  if(CLOUD&&me)$('roleChip').title=me.name+' · '+me.email;
+  if(CLOUD&&me)$('roleChip').title=me.name+' · '+shown(me.email);
   $('sampleBar').hidden=!S.sample;
   const nb=role==='admin'&&needsBackup();$('backupBar').hidden=!nb;
   if(nb)$('backupBar').innerHTML=`<b>${S.lastBackup?'Last backup '+dlabel(dkey(new Date(S.lastBackup)))+'.':'No backup yet.'}</b> Save a copy of your sales in case this device is lost. <button class="ghost" data-act="backup" style="padding:4px 10px;margin-left:6px">Back up now</button>`;
@@ -1401,15 +1407,16 @@ document.addEventListener('click',e=>{
     case 'reload':if(Object.keys(cart).length)ask('Reload now?','The order on the cashier screen is not finished and will be cleared.','Reload',()=>location.reload());else location.reload();break;
     case 'gsignout':cloud&&cloud.signOut();break;
     case 'gmode':loginGate(id);break;
-    case 'gforgot':{const em=$('gEmail').value.trim(),msg=$('gMsg');if(!em){msg.textContent='Type your email first, then tap Forgot password.';break}cloud.resetPassword(em).then(()=>msg.textContent='Reset link sent to '+em+'. Check the inbox and spam folder.',err=>msg.textContent=authMsg(err));break}
+    case 'gforgot':{const em=$('gEmail').value.trim(),msg=$('gMsg');if(!em){msg.textContent='Type your username or email first, then tap Forgot password.';break}if(!em.includes('@')){msg.textContent='A username has no inbox for a reset link. Ask an admin to remove this username and add you again with a new password.';break}cloud.resetPassword(em).then(()=>msg.textContent='Reset link sent to '+em+'. Check the inbox and spam folder.',err=>msg.textContent=authMsg(err));break}
     case 'gup':if(upChoice)upChoice(id==='1');break;
     case 'addmember':{
       if(!CLOUD||role!=='admin')break;
-      const nm=$('tName').value.trim(),em=$('tEmail').value.trim(),pw=$('tPw').value,rl=$('tRole').value;
-      if(!nm||!em){toast('Enter a name and an email');break}
+      const nm=$('tName').value.trim(),raw=$('tEmail').value.trim(),em=toLogin(raw),pw=$('tPw').value,rl=$('tRole').value;
+      if(!nm||!raw){toast('Enter a name and a username');break}
+      if(em===null){toast(BAD_USER);break}
       if(pw.length<6){toast('Password needs at least 6 characters');break}
       b.disabled=true;
-      cloud.addMember(em,pw,nm,rl).then(()=>{logA('Added person',`${nm} (${em}) as ${rl==='admin'?'Admin':'Staff'}`);save();render();toast(`${nm} added. Give them the email and password.`)},err=>{b.disabled=false;toast(authMsg(err))});
+      cloud.addMember(em,pw,nm,rl).then(()=>{logA('Added person',`${nm} (${shown(em)}) as ${rl==='admin'?'Admin':'Staff'}`);save();render();toast(`${nm} added. Sign in with ${shown(em)} and the password you set.`)},err=>{b.disabled=false;toast(authMsg(err))});
       break}
     case 'restore':$('restoreFile').value='';$('restoreFile').click();break;
     case 'clearsample':if(CLOUD)break;ask('Clear sample data?','All sample orders, expenses and stock history are removed. Your menu, prices and PINs stay. Frozen pack stock goes to 0.','Clear data',()=>{S.orders=[];S.expenses=[];S.moves=[];S.items.forEach(i=>{if(i.stock)i.qty=0});S.sample=false;S.log=[];S.closed={};cart={};logA('Cleared sample data','');save();render();toast('Sample data cleared')});break;
@@ -1431,7 +1438,7 @@ document.addEventListener('change',e=>{
   if(t.dataset.urole){
     const u=users.find(x=>x.uid===t.dataset.urole);if(!u||role!=='admin')return;
     const nr=t.value,label={admin:'Admin',staff:'Staff',removed:'Removed'};
-    cloud.setRole(u.uid,nr).then(()=>{logA('Changed role',`${u.name||u.email}: ${label[u.role]||u.role} → ${label[nr]}`);save();toast('Saved')},err=>{t.value=u.role;toast(authMsg(err))});
+    cloud.setRole(u.uid,nr).then(()=>{logA('Changed role',`${u.name||shown(u.email)}: ${label[u.role]||u.role} → ${label[nr]}`);save();toast('Saved')},err=>{t.value=u.role;toast(authMsg(err))});
     return}
   if(t.id==='restoreFile'){if(t.files&&t.files[0])restoreFrom(t.files[0]);return}
   if(t.id==='dFrom'||t.id==='dTo'){
@@ -1463,8 +1470,9 @@ function loginGate(mode){
   const setup=mode==='setup';
   showGate(`<form class="gate-form" id="gateForm" data-mode="${mode}" novalidate>
     <h2>${setup?'Set up the shop':'Sign in'}</h2>
-    ${setup?'<p class="pin-hint">This creates the owner account. The owner can add staff and other admins in Settings.</p><input class="inp" id="gName" placeholder="Your name" autocomplete="name">':''}
-    <input class="inp" id="gEmail" type="email" placeholder="Email" autocomplete="username" autocapitalize="off" spellcheck="false">
+    ${setup?'<p class="pin-hint">This creates the owner account. The owner can add staff and other admins in Settings. Use an email instead of a username if you want to be able to reset a forgotten password.</p><input class="inp" id="gName" placeholder="Your name" autocomplete="name">':''}
+
+    <input class="inp" id="gEmail" type="text" placeholder="Username or email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
     <input class="inp" id="gPw" type="password" placeholder="${setup?'Password, at least 6 characters':'Password'}" autocomplete="${setup?'new-password':'current-password'}">
     <p class="gate-msg" id="gMsg" role="status"></p>
     <button class="btn" type="submit">${setup?'Create owner account':'Sign in'}</button>
@@ -1473,11 +1481,11 @@ function loginGate(mode){
 }
 function authMsg(e){
   const c=(e&&e.code)||'';
-  if(/invalid-credential|wrong-password|user-not-found|invalid-login/.test(c))return 'Wrong email or password.';
+  if(/invalid-credential|wrong-password|user-not-found|invalid-login/.test(c))return 'Wrong username or password.';
   if(c==='auth/invalid-email')return 'That email does not look right.';
   if(c==='auth/missing-password')return 'Enter the password.';
   if(c==='auth/weak-password')return 'Use at least 6 characters for the password.';
-  if(c==='auth/email-already-in-use')return 'That email already has an account. If they were removed, change their role in the Team list instead.';
+  if(c==='auth/email-already-in-use')return 'That username or email is already taken. If the person was removed, change their role in the Team list instead.';
   if(c==='auth/network-request-failed')return 'No internet. Signing in needs a connection the first time.';
   if(c==='auth/too-many-requests')return 'Too many tries. Wait a few minutes and try again.';
   if(c==='permission-denied')return 'This shop is already set up. Sign in instead.';
@@ -1530,7 +1538,7 @@ async function startCloud(){
     getS:()=>S, bdate,
     onSignedOut:()=>{me=null;cloudReady=false;waitMenu=false;users=[];S=fresh();S.items=[];cart={};cartNote='';closeModal();updateSyncBar();
       showGate('<p class="pin-hint">Loading…</p>');cloud.ownerExists().then(x=>loginGate(x===false?'setup':'signin'))},
-    onNoAccess:email=>{cloudReady=false;closeModal();showGate(`<p class="pin-hint">${esc(email)} is not on this shop's team, or was removed. Ask an admin to add this email in Settings.</p><button class="btn" data-act="gsignout">Sign out</button>`)},
+    onNoAccess:email=>{cloudReady=false;closeModal();showGate(`<p class="pin-hint"><b>${esc(shown(email))}</b> is not on this shop's team, or was removed. Ask an admin to add you in Settings.</p><button class="btn" data-act="gsignout">Sign out</button>`)},
     onRole:m=>{const was=me;me=m;role=m.role;
       if(!was||was.role!==m.role){cloudReady=false;closeModal();showGate('<p class="pin-hint">Loading sales…</p>')}
       else if(cloudReady)safeRender()},
@@ -1549,24 +1557,25 @@ function teamPanel(){
   const list=users.slice().sort((a,b)=>(a.role==='removed')-(b.role==='removed')||String(a.name||'').localeCompare(String(b.name||'')));
   return `<div class="panel"><h3>Team</h3>
     <div class="list">${list.length?list.map(u=>`<div class="row" style="grid-template-columns:minmax(0,1fr) 130px">
-      <span class="mid"><div><b>${esc(u.name||u.email||'')}</b>${me&&u.uid===me.uid?' <span class="lsub">(you)</span>':''}</div><small>${esc(u.email||'')}${u.owner?' · owner':''}</small></span>
+      <span class="mid"><div><b>${esc(u.name||shown(u.email))}</b>${me&&u.uid===me.uid?' <span class="lsub">(you)</span>':''}</div><small>${esc(shown(u.email))}${u.owner?' · owner':''}</small></span>
       ${u.owner||(me&&u.uid===me.uid)?'<span class="pill adm" style="justify-self:end">Admin</span>':`<select class="inp" data-urole="${esc(u.uid)}" aria-label="Role for ${esc(u.name||u.email||'')}">${[['admin','Admin'],['staff','Staff'],['removed','Removed']].map(([v,l])=>`<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join('')}</select>`}
     </div>`).join(''):'<div class="empty">Loading team…</div>'}</div>
     <h3 style="margin-top:18px">Add a person</h3>
     <div class="form">
       <div class="field"><label for="tName">Name</label><input class="inp" id="tName" autocomplete="off"></div>
-      <div class="field"><label for="tEmail">Email</label><input class="inp" id="tEmail" type="email" autocapitalize="off" spellcheck="false" autocomplete="off"></div>
+      <div class="field"><label for="tEmail">Username or email</label><input class="inp" id="tEmail" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="e.g. aina"></div>
       <div class="field"><label for="tPw">Password</label><input class="inp" id="tPw" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="At least 6 characters"></div>
       <div class="field"><label for="tRole">Role</label><select class="inp" id="tRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
       <button class="btn dark" data-act="addmember">Add person</button>
     </div>
-    <p class="note" style="margin-top:10px">Each person signs in on their own device with this email and password. Staff can use the cashier, see orders and check stock. Only admins see money totals, expenses and settings. Choose Removed to block someone straight away.</p>
+    <p class="note" style="margin-top:10px">Each person signs in on their own device with this username (or email) and password. A username can't get a password reset email, so to change a forgotten password, set the old username to Removed and add the person again with a new one. Staff can use the cashier, see orders and check stock. Only admins see money totals, expenses and settings. Choose Removed to block someone straight away.</p>
   </div>`;
 }
 document.addEventListener('submit',e=>{
   if(e.target.id!=='gateForm')return;e.preventDefault();
-  const f=e.target,setup=f.dataset.mode==='setup',email=$('gEmail').value.trim(),pw=$('gPw').value,name=setup?$('gName').value.trim():'',btn=f.querySelector('button[type=submit]'),msg=$('gMsg');
-  if(!email||!pw||(setup&&!name)){msg.textContent='Fill in every box.';return}
+  const f=e.target,setup=f.dataset.mode==='setup',raw=$('gEmail').value.trim(),email=toLogin(raw),pw=$('gPw').value,name=setup?$('gName').value.trim():'',btn=f.querySelector('button[type=submit]'),msg=$('gMsg');
+  if(!raw||!pw||(setup&&!name)){msg.textContent='Fill in every box.';return}
+  if(email===null){msg.textContent=BAD_USER;return}
   btn.disabled=true;msg.textContent=setup?'Creating the account…':'Signing in…';
   (setup?cloud.setupOwner(email,pw,name):cloud.signIn(email,pw)).catch(err=>{btn.disabled=false;msg.textContent=authMsg(err)});
 });

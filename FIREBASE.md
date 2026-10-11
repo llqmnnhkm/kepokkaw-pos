@@ -53,6 +53,7 @@ Setting someone to **Removed** in the Team list blocks them on every device stra
 
 ## Good to know
 
+* **Usernames:** people can sign in with a username (for example `aiman`) instead of an email. Behind the scenes it becomes `aiman@<your authDomain>`, because Firebase needs an email. A username can't receive a password reset email, so if someone forgets their password, set that username to Removed and add them again with a new username. The owner should use a real email.
 * **Signing in needs internet once per device.** After that the device stays signed in and works offline.
 * **Forgot password:** tap **Forgot password?** on the sign in screen to get a reset email.
 * **Order numbers** still restart at 1 every trading day. If two devices complete an order in the very same moment, or both sell while offline, they can hand out the same number. The orders themselves are separate and both are kept.

@@ -220,7 +220,16 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .keys button{height:80px;border-radius:50%;border:0;background:var(--red-deep);color:var(--on-red);font-family:var(--display);font-weight:700;font-size:32px}
 .keys button.t{background:transparent;font-size:16px;font-family:var(--body)}
 .pin-hint{font-size:13px;opacity:.85}
-.paygrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.payfilter{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.payfilter .chip{flex:none;display:inline-flex;align-items:center;gap:6px}
+.payfilter .cnt{font-weight:600;opacity:.7;font-variant-numeric:tabular-nums}
+.pdot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.pdot.cash{background:var(--good)} .pdot.online{background:var(--red)}
+.pill.pay{font-size:10px;padding:2px 7px;vertical-align:1px}
+.pill.pay.cash{background:var(--good);color:var(--on-red)}
+.pill.pay.online{background:var(--red);color:var(--on-red)}
+.paygrid{display:grid;
+grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .paybtn{display:grid;justify-items:center;align-content:center;gap:6px;min-height:150px;border:0;border-radius:18px;background:var(--surface-2);box-shadow:inset 0 0 0 1.5px var(--line);padding:16px 10px;text-align:center}
 .paybtn svg{width:44px;height:44px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .paybtn.cash svg{stroke:var(--good)}
@@ -534,6 +543,7 @@ let cartNote='', remarkOpen=false;
 const noteParts=n=>n.split(',').map(x=>x.trim()).filter(Boolean);
 let fx={}, renderedView=null, prevTotal=0;
 const MOTION=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+let ordPay='all';
 let S, role='admin', view='cashier', cart={}, dashP='7d', ordDate=null, expMonth=null, pinRole='staff', pinBuf='', pending=null;
 // Cloud sync is on when firebase-config.js holds a config. Then accounts replace PINs.
 const CLOUD=!!window.KEPOKKAW_FIREBASE;
@@ -728,22 +738,28 @@ function vCashier(m){
 function vOrders(m){
   const t=today();
   if(role!=='admin'||!ordDate)ordDate=ordDate&&role==='admin'?ordDate:t;
-  const list=S.orders.filter(o=>o.date===ordDate).sort((a,b)=>b.ts-a.ts);
-  const live=list.filter(o=>!o.voided), sales=live.reduce((s,o)=>s+o.total,0);
+  const day=S.orders.filter(o=>o.date===ordDate).sort((a,b)=>b.ts-a.ts);
+  // payment filter: all, cash, online, or none (orders saved before payment was recorded)
+  const payOf=o=>PAY[o.pay]?o.pay:'none', dayLive=day.filter(o=>!o.voided);
+  const pf=[['all','All'],['cash','Cash'],['online','Online'],['none','Not recorded']].map(([k,l])=>{const os=k==='all'?dayLive:dayLive.filter(o=>payOf(o)===k);return{k,l,n:os.length,v:os.reduce((s,o)=>s+o.total,0)}}).filter(f=>f.k!=='none'||f.n);
+  if(!pf.some(f=>f.k===ordPay))ordPay='all';
+  const list=ordPay==='all'?day:day.filter(o=>payOf(o)===ordPay);
+  const live=list.filter(o=>!o.voided), sales=live.reduce((s,o)=>s+o.total,0), pl=ordPay==='all'?'':PAY[ordPay]?PAY[ordPay]+' ':'Not recorded ';
   m.innerHTML=`<div class="wrap">
     <div class="bar ordbar"><h1 class="h1">Orders${S.closed&&S.closed[ordDate]?'<span class="pill closed">Closed</span>':''}</h1>
       <div class="chips">${role==='admin'?`<div class="daynav"><button class="chip" data-act="oday" data-id="-1">‹ Prev</button><input class="inp" type="date" id="ordDate" value="${ordDate}" max="${t}" style="width:auto"><button class="chip" data-act="oday" data-id="1" ${ordDate>=t?'disabled':''}>Next ›</button></div>`:`<span class="note" style="align-self:center">Today, ${dlabel(t)}</span>`}
       <button class="btn quiet" data-act="report">Day report</button><button class="btn" data-act="closeday">Close day</button></div>
     </div>
     <div class="stats s3">
-      <div class="stat"><span>Orders</span><b>${live.length}</b>${list.length-live.length?`<small>${list.length-live.length} voided</small>`:''}</div>
-      ${role==='admin'?`<div class="stat"><span>Sales</span><b>${rm(sales)}</b>${payLine(live,money0)?`<small>${payLine(live,money0)}</small>`:''}</div>`:''}
+      <div class="stat"><span>${pl}Orders</span><b>${live.length}</b>${list.length-live.length?`<small>${list.length-live.length} voided</small>`:''}</div>
+      ${role==='admin'?`<div class="stat"><span>${pl}Sales</span><b>${rm(sales)}</b>${ordPay==='all'&&payLine(live,money0)?`<small>${payLine(live,money0)}</small>`:''}</div>`:''}
       <div class="stat"><span>Items sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
     </div>
+    ${day.length?`<div class="chips payfilter" role="group" aria-label="Filter by payment">${pf.map(f=>`<button class="chip ${f.k===ordPay?'on':''}" data-act="opay" data-id="${f.k}" aria-pressed="${f.k===ordPay}">${f.k!=='all'&&f.k!=='none'?`<i class="pdot ${f.k}"></i>`:''}${f.l} <span class="cnt">${f.n}${role==='admin'&&f.k!=='all'?' · '+rm(f.v):''}</span></button>`).join('')}</div>`:''}
     <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${esc(o.id)}">
         <span class="no">#${o.no}</span>
-        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${who(o)}${PAY[o.pay]?' · '+PAY[o.pay]:''}</small> ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
-        <span class="r">${rm(o.total)}</span></button>`).join(''):'<div class="empty">No orders on this day.</div>'}</div></div>
+        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${who(o)}</small> ${PAY[o.pay]?`<span class="pill pay ${o.pay}">${PAY[o.pay]}</span>`:''} ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
+        <span class="r">${rm(o.total)}</span></button>`).join(''):(day.length?`<div class="empty">No ${ordPay==='none'?'orders without a payment':PAY[ordPay]+' orders'} on this day.</div>`:'<div class="empty">No orders on this day.</div>')}</div></div>
   </div>`;
 }
 
@@ -1403,6 +1419,7 @@ document.addEventListener('click',e=>{
     case 'delask':delSheet(id);break;
     case 'delstep2':delSheet2(id);break;
     case 'del':doDelete(id);break;
+    case 'opay':ordPay=id;render();break;
     case 'oday':ordDate=addDays(ordDate,+id);if(ordDate>today())ordDate=today();render();break;
     case 'dash':dashP=id;calMonth=null;fx.enter=true;render();break;
     case 'close':closeModal();break;

@@ -220,6 +220,16 @@ main{flex:1;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset
 .keys button{height:80px;border-radius:50%;border:0;background:var(--red-deep);color:var(--on-red);font-family:var(--display);font-weight:700;font-size:32px}
 .keys button.t{background:transparent;font-size:16px;font-family:var(--body)}
 .pin-hint{font-size:13px;opacity:.85}
+.paygrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.paybtn{display:grid;justify-items:center;align-content:center;gap:6px;min-height:150px;border:0;border-radius:18px;background:var(--surface-2);box-shadow:inset 0 0 0 1.5px var(--line);padding:16px 10px;text-align:center}
+.paybtn svg{width:44px;height:44px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.paybtn.cash svg{stroke:var(--good)}
+.paybtn.online svg{stroke:var(--red)}
+.paybtn b{font-family:var(--display);font-style:italic;font-weight:800;font-size:30px;text-transform:uppercase;line-height:1}
+.paybtn small{color:var(--muted);font-size:12px;font-weight:600}
+.paybtn:active{transform:scale(.97)}
+.stat small.paysplit{display:block;margin-top:2px}
+
 .gate{text-align:center}
 .gate .pin-hint{font-size:15px;line-height:1.45;opacity:.95;margin:0}
 .gate .pin-hint b{font-weight:700}
@@ -695,7 +705,7 @@ function vCashier(m){
   const count=lines.reduce((s,[,q])=>s+q,0);
   const lo=lastOrderId&&S.orders.find(o=>o.id===lastOrderId), showUndo=lo&&!lo.voided&&Date.now()-lo.ts<=UNDO_MS;
   const bump=total!==prevTotal&&!fx.saved;prevTotal=total;
-  const stamp=fx.saved&&MOTION?`<div class="stamp"><div class="stamp-in"><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><b>Order #${fx.saved.no} saved</b><small>${rm(fx.saved.total)}</small></div></div>`:'';
+  const stamp=fx.saved&&MOTION?`<div class="stamp"><div class="stamp-in"><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><b>Order #${fx.saved.no} saved</b><small>${rm(fx.saved.total)}${PAY[fx.saved.pay]?' · '+PAY[fx.saved.pay]:''}</small></div></div>`:'';
   m.innerHTML=`<div class="pos">
     <div class="tiles">${tiles}</div>
     <aside class="ticket ${lines.length&&(remarkOpen||cartNote)?'has-remark':''}">${stamp}
@@ -727,12 +737,12 @@ function vOrders(m){
     </div>
     <div class="stats s3">
       <div class="stat"><span>Orders</span><b>${live.length}</b>${list.length-live.length?`<small>${list.length-live.length} voided</small>`:''}</div>
-      ${role==='admin'?`<div class="stat"><span>Sales</span><b>${rm(sales)}</b></div>`:''}
+      ${role==='admin'?`<div class="stat"><span>Sales</span><b>${rm(sales)}</b>${payLine(live,money0)?`<small>${payLine(live,money0)}</small>`:''}</div>`:''}
       <div class="stat"><span>Items sold</span><b>${live.reduce((s,o)=>s+o.lines.reduce((a,l)=>a+l.qty,0),0)}</b></div>
     </div>
     <div class="panel"><div class="list">${list.length?list.map(o=>`<button class="row ${o.voided?'voided':''}" data-act="order" data-id="${esc(o.id)}">
         <span class="no">#${o.no}</span>
-        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${who(o)}</small> ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
+        <span class="mid"><div>${o.lines.map(l=>`${esc(l.name)} ×${l.qty}`).join(', ')}</div><small>${tm(o.ts)} · ${who(o)}${PAY[o.pay]?' · '+PAY[o.pay]:''}</small> ${o.voided?'<span class="pill void">Voided</span>':''}${o.note?`<small class="onote">Remark: ${esc(o.note)}</small>`:''}</span>
         <span class="r">${rm(o.total)}</span></button>`).join(''):'<div class="empty">No orders on this day.</div>'}</div></div>
   </div>`;
 }
@@ -841,7 +851,7 @@ function vDash(m){
       ${a===b?`<button class="btn quiet" data-act="dayorders">View orders for ${dlabel(a)}</button>`:''}
     </div>`:''}
     <div class="stats">
-      <div class="stat" style="--i:0"><span>Sales</span><b data-n="${sales}" data-fmt="rm">${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${trend(sales,P.sales,true)}</div>
+      <div class="stat" style="--i:0"><span>Sales</span><b data-n="${sales}" data-fmt="rm">${rm(sales)}</b><small>${a===b?dlabel(a):dlabel(a)+' – '+dlabel(b)}</small>${payLine(ords,money0)?`<small class="paysplit">${payLine(ords,money0)}</small>`:''}${trend(sales,P.sales,true)}</div>
       <div class="stat" style="--i:1"><span>Expenses</span><b data-n="${cost}" data-fmt="rm">${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost,P.cost,false)}</div>
       <div class="stat" style="--i:2"><span>Profit</span><b class="${profit>=0?'pos-v':'neg-v'}" data-n="${profit}" data-fmt="rm">${profit<0?'−':''}${rm(Math.abs(profit))}</b><small>${sales?Math.round(profit/sales*100)+'% of sales':'—'}</small>${trend(profit,P.profit,true)}</div>
       <div class="stat" style="--i:3"><span>Orders</span><b data-n="${ords.length}" data-fmt="int">${ords.length}</b><small>avg ${ords.length?rm(sales/ords.length):'—'}</small>${trend(ords.length,P.ords.length,true)}</div>
@@ -1009,7 +1019,9 @@ function pctTxt(cur,prev){if(!prev)return'';const p=Math.round((cur-prev)/Math.a
 function periodSummary(a,b){
   const T=totals(a,b),[pa,pb]=prevRange(dashP,a,b),P=totals(pa,pb),prods=itemTotals(T.ords),n=days(a,b).length,items=prods.reduce((s,p)=>s+p.qty,0);
   const L=['*KEPOKKAW* · Sales summary',a===b?parse(a).toLocaleDateString('en-MY',{weekday:'short',day:'numeric',month:'short',year:'numeric'}):`${dlong(a)} – ${dlong(b)} (${n} days)`,''];
-  L.push(`*Sales: ${rm(T.sales)}*${pctTxt(T.sales,P.sales)}`,`Expenses: ${rm(T.cost)}${pctTxt(T.cost,P.cost)}`);
+  L.push(`*Sales: ${rm(T.sales)}*${pctTxt(T.sales,P.sales)}`);
+  if(payLine(T.ords,rm))L.push(payLine(T.ords,rm));
+  L.push(`Expenses: ${rm(T.cost)}${pctTxt(T.cost,P.cost)}`);
   L.push(`*Profit: ${T.profit<0?'-':''}${rm(Math.abs(T.profit))}*${T.sales?` (${Math.round(T.profit/T.sales*100)}% of sales)`:''}`);
   L.push(`Orders: ${T.ords.length}${T.ords.length?` · avg ${rm(T.sales/T.ords.length)}`:''}`,`Items sold: ${items}`);
   if(prods.length){L.push('','*By flavour*');prods.forEach(p=>L.push(`• ${p.name} ×${p.qty} = ${rm(p.rev)}`))}
@@ -1032,7 +1044,7 @@ function closeSheet(date){closing={date,rep:false,bak:false};drawClose()}
 function drawClose(){
   const {date,rep,bak}=closing, live=S.orders.filter(o=>o.date===date&&!o.voided), sales=live.reduce((s,o)=>s+o.total,0), done=S.closed&&S.closed[date];
   openModal(`<h2>Close day</h2>
-    <p class="note">${parse(date).toLocaleDateString('en-MY',{weekday:'long',day:'numeric',month:'long'})} · ${live.length} orders · ${rm(sales)}${done?` · closed at ${tm(done.ts)}`:''}</p>
+    <p class="note">${parse(date).toLocaleDateString('en-MY',{weekday:'long',day:'numeric',month:'long'})} · ${live.length} orders · ${rm(sales)}${payLine(live,rm)?`<br><b>Cash to count: ${rm(payTotals(live).cash)}</b> · Online ${rm(payTotals(live).online)}`:''}${done?` · closed at ${tm(done.ts)}`:''}</p>
     <div class="csteps">
       <div class="cstep ${rep?'done':''}"><span class="cnum">${rep?TICK:'1'}</span><div class="ctext"><b>Send day report</b><small>${rep?'Sent':'Choose WhatsApp to send it to the owner'}</small></div><button class="btn ${rep?'quiet':''}" data-act="closerep">${rep?'Again':'Send'}</button></div>
       <div class="cstep ${bak?'done':''}"><span class="cnum">${bak?TICK:'2'}</span><div class="ctext"><b>Save backup</b><small>${bak?'Saved':'Keep the file in WhatsApp or Google Drive'}</small></div><button class="btn ${bak?'quiet':''}" data-act="closebak">${bak?'Again':'Save'}</button></div>
@@ -1116,7 +1128,7 @@ function pdfReport(a,b){
    ['Orders',String(T.ords.length),INK],['Average order',T.ords.length?rm(T.sales/T.ords.length):'-',INK],['Items sold',String(items),INK]]
   .forEach((t,i)=>{const cx=40+(i%3)*175,cy=y+Math.floor(i/3)*66;d.rect(cx,cy,165,56,SOFT);d.text(cx+12,cy+20,t[0].toUpperCase(),{size:8,bold:true,color:MUTED});d.text(cx+12,cy+43,t[1],{size:17,bold:true,color:t[2]})});
   y+=146;
-  d.text(40,y,(T.sales?`Profit is ${Math.round(T.profit/T.sales*100)}% of sales.`:'No sales in this period.')+(voided?` ${voided} voided order${voided===1?' is':'s are'} not counted.`:''),{size:9,color:MUTED});
+  d.text(40,y,(T.sales?`Profit is ${Math.round(T.profit/T.sales*100)}% of sales.${payLine(T.ords,rm)?' '+payLine(T.ords,rm)+'.':''}`:'No sales in this period.')+(voided?` ${voided} voided order${voided===1?' is':'s are'} not counted.`:''),{size:9,color:MUTED});
   y+=30;
   // sales by flavour
   const table=(title,rows,total,barCol)=>{
@@ -1190,18 +1202,32 @@ function addToCart(id,src){
   fx.pop=id;fx.newLine=!cart[id];cart[id]=q;render();
   if(from)fly(from,it.color||'#999');
 }
-function complete(){
+// Ask Cash or Online before saving the order
+const PAY={cash:'Cash',online:'Online'};
+const PAY_ICON={cash:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>',
+  online:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM18 14h2.5M14 18v2.5"/></svg>'};
+function payTotals(ords){const t={cash:0,online:0,none:0};ords.forEach(o=>{t[PAY[o.pay]?o.pay:'none']+=o.total});return t}
+function payLine(ords,fmt){const t=payTotals(ords);if(!t.cash&&!t.online)return '';return `Cash ${fmt(t.cash)} · Online ${fmt(t.online)}${t.none?` · not recorded ${fmt(t.none)}`:''}`}
+function paySheet(){
+  const lines=Object.entries(cart).filter(([,q])=>q>0);if(!lines.length)return;
+  for(const [id,q] of lines){const it=item(id);if(it.stock&&it.qty<q){toast(`Only ${it.qty} ${it.name} left`);return}}
+  const total=lines.reduce((s,[id,q])=>s+item(id).price*q,0);
+  openModal(`<h2>Payment</h2><p class="note">Order #${nextNo(today())} · <b>${rm(total)}</b></p>
+    <div class="paygrid">${['cash','online'].map(k=>`<button class="paybtn ${k}" data-act="pay" data-id="${k}">${PAY_ICON[k]}<b>${PAY[k]}</b><small>${k==='cash'?'Notes and coins':'QR, DuitNow, e-wallet, transfer'}</small></button>`).join('')}</div>
+    <div class="acts"><button class="btn quiet" data-act="close">Back</button></div>`);
+}
+function complete(pay){
   const lines=Object.entries(cart).filter(([,q])=>q>0).map(([id,qty])=>{const it=item(id);return{itemId:id,name:it.name,price:it.price,qty}});
   if(!lines.length)return;
   for(const l of lines){const it=item(l.itemId);if(it.stock&&it.qty<l.qty){toast(`Only ${it.qty} ${it.name} left`);return}}
   const ts=Date.now(),date=bdate(ts),no=nextNo(date),total=lines.reduce((s,l)=>s+l.price*l.qty,0);
   const oid=uid();
   const note=cartNote.trim();
-  S.orders.push(Object.assign({id:oid,no,ts,date,lines,total,by:role,voided:null},myName(),note?{note}:{}));
+  S.orders.push(Object.assign({id:oid,no,ts,date,lines,total,by:role,voided:null},PAY[pay]?{pay}:{},myName(),note?{note}:{}));
   lines.forEach(l=>{const it=item(l.itemId);if(it.stock){it.qty-=l.qty;S.moves.push({ts,itemId:it.id,delta:-l.qty,reason:`Sold · order #${no}`})}});
   cart={};cartNote='';remarkOpen=false;lastOrderId=oid;clearTimeout(undoTimer);
   undoTimer=setTimeout(()=>{if(view==='cashier'&&$('modal').hidden)render()},UNDO_MS+500);
-  fx.saved={no,total};save();render();
+  fx.saved={no,total,pay};save();render();
 }
 function nextNo(d){return S.orders.reduce((m,o)=>o.date===d&&o.no>m?o.no:m,0)+1}
 function canVoid(o){return !o.voided&&(role==='admin'||Date.now()-o.ts<=UNDO_MS)}
@@ -1212,6 +1238,7 @@ function orderSheet(id){
     <p class="note">${dlabel(o.date)}, ${tm(o.ts)} · served by ${who(o)}</p>
     <div>${o.lines.map(l=>`<div class="line"><div><div class="lname">${esc(l.name)}</div><div class="lsub">${l.qty} × ${rm0(l.price)}</div></div><b>${rm(l.price*l.qty)}</b></div>`).join('')}</div>
     <div class="sum-row"><span>Total</span><div class="amt" style="font-size:40px">${rm(o.total)}</div></div>
+    <div class="field"><label>Payment</label><div class="chips">${canNote(o)&&!o.voided?['cash','online'].map(k=>`<button class="chip ${o.pay===k?'on':''}" data-act="setpay" data-id="${esc(o.id)}" data-pay="${k}">${PAY[k]}</button>`).join(''):`<span class="note">${PAY[o.pay]||'Not recorded'}</span>`}</div></div>
     <div class="field"><label for="noteEdit">Remark</label><input class="inp" id="noteEdit" data-id="${esc(o.id)}" value="${esc(o.note||'')}" placeholder="${canNote(o)?'Add a remark':'No remark'}" maxlength="120" autocomplete="off" ${canNote(o)?'':'readonly'}></div>
     ${o.voided?`<p class="note"><span class="pill void">Voided</span> ${tm(o.voided.ts)} · ${esc(o.voided.reason)}</p>`:''}
     ${role==='staff'&&!o.voided?`<p class="note">${canVoid(o)?'You can cancel an order for 2 minutes after it is made.':'Only the admin can void this order now.'}</p>`:''}
@@ -1271,7 +1298,7 @@ function excel(a,b){
   const byCat={};T.exps.forEach(e=>byCat[e.cat]=(byCat[e.cat]||0)+e.amount);
   const H=v=>({v,t:'h'}), M=v=>({v,t:'money'}), D=v=>({v,t:'date'}), B=v=>({v,t:'b'}), BM=v=>({v,t:'bm'}), BI=v=>({v,t:'bi'});
   const summary=[[{v:'Kepokkaw sales report',t:'title'}],['Period',a===b?dlong(a):dlong(a)+' – '+dlong(b)],['Exported',dlong(today())+', '+tm(Date.now())],[],
-    [B('Sales'),BM(T.sales)],[B('Expenses'),BM(T.cost)],[B('Profit'),BM(T.profit)],
+    [B('Sales'),BM(T.sales)],['Cash sales',M(payTotals(T.ords).cash)],['Online sales',M(payTotals(T.ords).online)],[B('Expenses'),BM(T.cost)],[B('Profit'),BM(T.profit)],
     ['Orders',T.ords.length],['Voided orders',allO.length-T.ords.length],['Average order',M(T.ords.length?T.sales/T.ords.length:0)],['Items sold',portions],[],
     [H('Item'),H('Qty sold'),H('Sales'),H('Share of sales')],...prods.map(p=>[p.name,p.qty,M(p.rev),{v:T.sales?p.rev/T.sales:0,t:'pct'}]),[],
     [H('Expense category'),H('Amount')],...Object.entries(byCat).sort((x,y)=>y[1]-x[1]).map(([c,v])=>[c,M(v)])];
@@ -1279,8 +1306,8 @@ function excel(a,b){
   ds.forEach(d=>{const o=T.ords.filter(x=>x.date===d),sv=o.reduce((s,x)=>s+x.total,0),ev=T.exps.filter(x=>x.date===d).reduce((s,x)=>s+x.amount,0);
     daily.push([D(d),DOW[parse(d).getDay()],o.length,o.reduce((s,x)=>s+qty(x),0),M(sv),M(ev),M(sv-ev)])});
   daily.push([B('Total'),'',BI(T.ords.length),BI(portions),BM(T.sales),BM(T.cost),BM(T.profit)]);
-  const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Served by'),H('Status'),H('Void reason'),H('Remark')]];
-  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),o.name||(o.by==='admin'?'Admin':'Staff'),o.voided?'Voided':'Sold',o.voided?o.voided.reason:'',o.note||''])));
+  const orders=[[H('Date'),H('Time'),H('Order'),H('Item'),H('Qty'),H('Unit price'),H('Line total'),H('Payment'),H('Served by'),H('Status'),H('Void reason'),H('Remark')]];
+  allO.forEach(o=>o.lines.forEach(l=>orders.push([D(o.date),{v:o.ts,t:'time'},o.no,l.name,l.qty,M(l.price),M(l.price*l.qty),PAY[o.pay]||'',o.name||(o.by==='admin'?'Admin':'Staff'),o.voided?'Voided':'Sold',o.voided?o.voided.reason:'',o.note||''])));
   const expenses=[[H('Date'),H('Category'),H('Amount'),H('Note')]];
   T.exps.slice().sort((x,y)=>x.date.localeCompare(y.date)||x.ts-y.ts).forEach(e=>expenses.push([D(e.date),e.cat,M(e.amount),e.note||'']));
   const stock=[[H('Date'),H('Time'),H('Item'),H('Change'),H('Reason')]];
@@ -1290,7 +1317,7 @@ function excel(a,b){
   const bytes=KKXLSX.build([
     {name:'Summary',cols:[26,30,14,16],rows:summary},
     {name:'Daily',cols:[14,8,10,10,14,14,14],freeze:true,rows:daily},
-    {name:'Orders',cols:[14,11,8,18,6,12,12,11,9,24,28],freeze:true,rows:orders},
+    {name:'Orders',cols:[14,11,8,18,6,12,12,10,11,9,24,28],freeze:true,rows:orders},
     {name:'Expenses',cols:[14,20,14,32],freeze:true,rows:expenses},
     {name:'Stock',cols:[14,11,16,9,28],freeze:true,rows:stock},
     {name:'Activity',cols:[14,11,9,22,52],freeze:true,rows:act}]);
@@ -1301,6 +1328,7 @@ function dayReport(date){
   const menu=S.items.map(i=>i.id), prods=itemTotals(live).sort((x,y)=>(menu.indexOf(x.id)+1||99)-(menu.indexOf(y.id)+1||99));
   const L=[`*KEPOKKAW* · ${parse(date).toLocaleDateString('en-MY',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}`,''];
   L.push(`Orders: ${live.length}${all.length-live.length?` (${all.length-live.length} voided)`:''}`,`*Sales: ${rm(sales)}*`);
+  if(payLine(live,rm))L.push(payLine(live,rm));
   if(prods.length){L.push('','*Sold*');prods.forEach(p=>L.push(`• ${p.name} ×${p.qty} = ${rm(p.rev)}`));L.push(`Total items: ${prods.reduce((s,p)=>s+p.qty,0)}`)}
   if(role==='admin'){
     const ex=S.expenses.filter(e=>e.date===date), cost=ex.reduce((s,e)=>s+e.amount,0);
@@ -1366,7 +1394,9 @@ document.addEventListener('click',e=>{
     case 'remark':remarkOpen=true;render();setTimeout(()=>{const i=$('cartNote');i&&i.focus()},50);break;
     case 'rchip':{const p=noteParts(cartNote),i=p.indexOf(id);if(i>=0)p.splice(i,1);else p.push(id);cartNote=p.join(', ');render();break}
     case 'clear':cart={};cartNote='';remarkOpen=false;render();break;
-    case 'complete':complete();break;
+    case 'complete':paySheet();break;
+    case 'pay':closeModal();complete(id);break;
+    case 'setpay':{const o=S.orders.find(x=>x.id===id),p=b.dataset.pay;if(!o||!canNote(o)||o.voided||o.pay===p)break;const old=PAY[o.pay]||'not recorded';o.pay=p;logA('Changed payment','#'+o.no+' ('+dlabel(o.date)+'): '+old+' → '+PAY[p]);save();render();orderSheet(o.id);toast('Payment saved');break}
     case 'order':orderSheet(id);break;
     case 'voidask':voidSheet(id);break;
     case 'void':doVoid(id);break;

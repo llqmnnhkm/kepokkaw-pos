@@ -1,10 +1,21 @@
 // Keeps the whole app on the device so it opens with no internet.
 // Bump VERSION whenever any file below changes (firebase-config.js included), so devices pick up the update.
 // cache: 'reload' skips the browser's HTTP cache, so a new VERSION never stores an old copy of a file.
-const VERSION = 'kepokkaw-v18';
+const VERSION = 'kepokkaw-v19';
 const FILES = [
   './',
   './index.html',
+  './css/app.css',
+  './js/core.js',
+  './js/cashier.js',
+  './js/orders.js',
+  './js/dashboard.js',
+  './js/expenses.js',
+  './js/stock.js',
+  './js/settings.js',
+  './js/reports.js',
+  './js/signin.js',
+  './js/main.js',
   './manifest.webmanifest',
   './xlsx.js',
   './pdf.js',

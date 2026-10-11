@@ -1,0 +1,14 @@
+{
+  "name": "kepokkaw-pos",
+  "private": true,
+  "description": "Tests for Kepokkaw Cashier. The app itself needs no install or build.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/check-offline-files.mjs && node tests/e2e.mjs && node tests/offline.mjs local && node tests/offline.mjs cloud",
+    "format": "prettier --write \"js/*.js\" \"css/app.css\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.0",
+    "puppeteer": "^24.0.0"
+  }
+}

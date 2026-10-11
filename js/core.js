@@ -104,7 +104,8 @@ const isCupItem = id => {
 const cupsOf = o => o.lines.reduce((s, l) => s + (isCupItem(l.itemId) ? l.qty : 0), 0);
 const cupsIn = ords => ords.reduce((s, o) => s + cupsOf(o), 0);
 const cupTxt = n => `${n} cup${n === 1 ? '' : 's'}`;
-const myName = () => (CLOUD && me ? { name: me.name } : {});
+// In sync mode every order, void and log entry carries who made it (checked by the security rules).
+const myName = () => (CLOUD && me ? { name: me.name, uid: me.uid } : {});
 // Firebase signs in with an email, so a username becomes a hidden email on this project's own domain:
 // "aina" signs in as aina@<authDomain>. Nothing is ever sent to that address.
 const USER_DOMAIN = CLOUD

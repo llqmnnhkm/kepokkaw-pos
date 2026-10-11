@@ -11,4 +11,11 @@
 //   appId: "1:123456789:web:abc123"
 // };
 // These values are not secret. The security rules in firestore.rules are what protect the data.
-window.KEPOKKAW_FIREBASE = null;
+window.KEPOKKAW_FIREBASE = {
+  apiKey: "AIzaSyDBfxmA_qZyYEJDQGKFyEYkUR6ycIYFYSY",
+  authDomain: "kepokkaw-89908.firebaseapp.com",
+  projectId: "kepokkaw-89908",
+  storageBucket: "kepokkaw-89908.firebasestorage.app",
+  messagingSenderId: "958243660168",
+  appId: "1:958243660168:web:8b52fb906ceb62f901da3d"
+};

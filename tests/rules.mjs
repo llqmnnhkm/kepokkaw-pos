@@ -34,14 +34,15 @@ const putLog = (d, id, value) => setDoc(doc(d, LOG), { last: id, l: { [id]: valu
 
 /* ---------- shop set up: the first account claims the shop, nobody after ---------- */
 await check('first account can set up the shop', async () => {
-  const b = writeBatch(db('owner'));
-  b.set(doc(db('owner'), 'meta/owner'), { uid: 'owner', ts: now() });
-  b.set(doc(db('owner'), 'users/owner'), { role: 'admin', owner: true, name: 'Owner', email: 'o@x.my', ts: now() });
+  const d = db('owner'), b = writeBatch(d);
+  b.set(doc(d, 'meta/owner'), { uid: 'owner', ts: now() });
+  b.set(doc(d, 'users/owner'), { role: 'admin', owner: true, name: 'Owner', email: 'o@x.my', ts: now() });
   await assertSucceeds(b.commit());
 });
 await check('a second account cannot claim the shop', async () => {
-  const b = writeBatch(db('eve'));
-  b.set(doc(db('eve'), 'users/eve'), { role: 'admin', owner: true, name: 'Eve', email: 'e@x.my', ts: now() });
+  const d = db('eve'), b = writeBatch(d);
+  b.set(doc(d, 'meta/owner'), { uid: 'eve', ts: now() });
+  b.set(doc(d, 'users/eve'), { role: 'admin', owner: true, name: 'Eve', email: 'e@x.my', ts: now() });
   await assertFails(b.commit());
 });
 

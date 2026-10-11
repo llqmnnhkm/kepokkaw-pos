@@ -51,6 +51,16 @@ Firebase changes its screens from time to time, so a button label may differ sli
 
 Setting someone to **Removed** in the Team list blocks them on every device straight away. The owner account cannot be removed or demoted by anyone.
 
+## Updating the rules
+
+When `firestore.rules` changes in a pull request:
+
+1. Merge the pull request and wait about 2 minutes.
+2. Open the app on **every** device and tap **Reload** on the update banner, so all devices run the new version.
+3. Then paste the new `firestore.rules` into **Firestore Database > Rules** and tap **Publish**.
+
+Doing step 3 before step 2 can make older devices fail to save, because the new rules expect things only the new app sends.
+
 ## Good to know
 
 * **Usernames:** people can sign in with a username (for example `aiman`) instead of an email. Behind the scenes it becomes `aiman@<your authDomain>`, because Firebase needs an email. A username can't receive a password reset email, so if someone forgets their password, set that username to Removed and add them again with a new username. The owner should use a real email.

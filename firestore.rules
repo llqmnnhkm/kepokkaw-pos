@@ -1,18 +1,91 @@
 rules_version = '2';
 // Security rules for Kepokkaw Cashier. Paste into Firebase console: Firestore Database > Rules > Publish.
 // Roles live in users/{uid}.role: 'admin', 'staff' or 'removed'. Anything not allowed here is blocked.
+// Tested by tests/rules.mjs on the Firestore emulator (GitHub Actions runs it on every pull request).
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function userDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
-    function hasRole() { return signedIn() && exists(userDoc()) && get(userDoc()).data.role in ['admin', 'staff']; }
-    function isAdmin() { return hasRole() && get(userDoc()).data.role == 'admin'; }
+    function me() { return get(userDoc()).data; }
+    function hasRole() { return signedIn() && exists(userDoc()) && me().role in ['admin', 'staff']; }
+    function isAdmin() { return hasRole() && me().role == 'admin'; }
+    function isNum(v) { return v is int || v is float; }
+    function nowMs() { return request.time.toMillis(); }
+
     // Staff may add or change records inside a map field, but never remove one (only admins delete).
     function keepsKeys(f) {
       return resource == null || !(f in resource.data)
         || (f in request.resource.data && request.resource.data[f].keys().hasAll(resource.data[f].keys()));
     }
     function staffMapWrite(f) { return hasRole() && request.resource.data.keys().hasOnly([f]) && keepsKeys(f); }
+
+    // ---------- orders (weeks/{monday}.o.{orderId}) ----------
+    // A staff write changes exactly one order, named in the "last" field.
+    function staffOrderWrite() {
+      let after = request.resource.data;
+      let a = after.get('o', {});
+      let b = resource == null ? {} : resource.data.get('o', {});
+      let k = after.get('last', '');
+      return hasRole()
+        && after.keys().hasOnly(['o', 'last'])
+        && k is string && k.size() > 0 && k in a
+        && a.diff(b).affectedKeys().hasOnly([k])
+        && (k in b ? staffOrderEdit(b[k], a[k]) : staffNewOrder(a[k], k));
+    }
+    // A new order must be signed by the staff member and stamped with the server time.
+    function staffNewOrder(o, k) {
+      return o.keys().hasOnly(['id', 'no', 'ts', 'date', 'lines', 'total', 'by', 'voided', 'name', 'uid', 'note', 'pay', 'at'])
+        && o.id == k && o.uid == request.auth.uid && o.by == 'staff' && o.name == me().name
+        && o.at == request.time
+        && o.ts is int && o.ts <= nowMs() + 300000 && o.ts > nowMs() - 3 * 86400000
+        && o.voided == null
+        && o.no is int && o.date is string && o.date.size() == 10
+        && o.lines is list && o.lines.size() > 0 && o.lines.size() <= 40
+        && isNum(o.total) && o.total >= 0 && o.total <= 10000
+        && (!('note' in o) || (o.note is string && o.note.size() <= 120))
+        && (!('pay' in o) || o.pay in ['cash', 'online']);
+    }
+    // On an existing order staff may only change payment and remark (same night), or void it within minutes.
+    function staffOrderEdit(old, neu) {
+      let changed = neu.diff(old).affectedKeys();
+      return changed.hasOnly(['pay', 'note', 'voided'])
+        && old.get('at', null) != null
+        && request.time < old.at + duration.value(16, 'h')
+        && (!changed.hasAny(['voided']) || staffVoid(old, neu))
+        && (!('pay' in neu) || neu.pay in ['cash', 'online'])
+        && (!('note' in neu) || (neu.note is string && neu.note.size() <= 120));
+    }
+    function staffVoid(old, neu) {
+      let v = neu.get('voided', null);
+      return old.voided == null && v != null
+        && request.time < old.at + duration.value(10, 'm')
+        && v.keys().hasOnly(['ts', 'reason', 'by', 'name', 'uid'])
+        && v.uid == request.auth.uid && v.by == 'staff'
+        && v.reason is string && v.reason.size() <= 80;
+    }
+
+    // ---------- activity log (log/{month}.l.{entryId}) ----------
+    // Append only for everyone, admins included: one new entry per write, signed by the writer,
+    // stamped with the server time. Entries can never be changed or removed.
+    function logAppend() {
+      let after = request.resource.data;
+      let a = after.get('l', {});
+      let b = resource == null ? {} : resource.data.get('l', {});
+      let k = after.get('last', '');
+      return hasRole()
+        && after.keys().hasOnly(['l', 'last'])
+        && k is string && k.size() > 0 && k in a && !(k in b)
+        && a.diff(b).affectedKeys().hasOnly([k])
+        && logEntry(a[k], k);
+    }
+    function logEntry(e, k) {
+      return e.keys().hasOnly(['id', 'ts', 'by', 'name', 'uid', 'action', 'detail', 'at'])
+        && e.id == k && e.uid == request.auth.uid && e.by == me().role && e.name == me().name
+        && e.at == request.time
+        && e.ts is int && e.ts <= nowMs() + 300000
+        && e.action is string && e.action.size() <= 60
+        && e.detail is string && e.detail.size() <= 500;
+    }
 
     // Who set the shop up. Readable before sign in so the app knows whether to offer "Set up the shop".
     match /meta/owner {
@@ -44,7 +117,7 @@ service cloud.firestore {
 
     match /weeks/{week} {
       allow read: if hasRole();
-      allow create, update: if isAdmin() || staffMapWrite('o');
+      allow create, update: if isAdmin() || staffOrderWrite();
       allow delete: if isAdmin();
     }
     match /moves/{month} {
@@ -57,7 +130,7 @@ service cloud.firestore {
     }
     match /log/{month} {
       allow read: if isAdmin();
-      allow create, update: if isAdmin() || staffMapWrite('l');
+      allow create, update: if logAppend();
       allow delete: if false;
     }
   }

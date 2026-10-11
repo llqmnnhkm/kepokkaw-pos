@@ -34,7 +34,7 @@
     collection: (db, name) => ({ kind: 'coll', path: name }),
     deleteField: () => ({ __sentinel: { __del: 1 } }),
     increment: n => ({ __sentinel: { __inc: n } }),
-    serverTimestamp: () => Date.now(),
+    serverTimestamp: () => ({ __sentinel: { __ts: 1 } }),
     onSnapshotsInSync: () => () => {},
     getDoc: ref => srv({ t: 'get', path: ref.path, uid: me() }).then(r => snapDoc(ref.id, r.exists, r.data)),
     getDocs: () => Promise.reject(new Error('unused')),

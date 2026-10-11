@@ -39,6 +39,6 @@ The `js` files are plain scripts that share one scope and load in the order list
 
 Every pull request runs the tests on GitHub (the Tests check). A red cross means something would break, so don't merge until it's green.
 
-To run them on a computer: `npm install`, then `npm test`. They cover the offline file list, a full day of selling in device only mode, cloud sync across two simulated devices (staff limits, payments, cups, void, delete, merge), and opening the app with no internet. `npm run format` tidies the code layout.
+To run them on a computer: `npm install`, then `npm test`. They cover the offline file list, a full day of selling in device only mode, cloud sync across two simulated devices (staff limits, payments, cups, void, delete, merge), and opening the app with no internet. `npm run test:rules` checks `firestore.rules` on the real Firestore emulator (needs Java): staff can't edit totals or old orders, the activity log can't be faked or erased, and staff can't see expenses. `npm run format` tidies the code layout.
 
 Fonts: Barlow and Barlow Condensed, SIL Open Font License (see `fonts/OFL.txt`). Firebase JS SDK in `firebase.js`: Apache License 2.0.

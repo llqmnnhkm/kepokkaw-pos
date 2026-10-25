@@ -35,8 +35,10 @@
     return v;
   }
   const canon = v => JSON.stringify(sortKeys(v));
+  // fields the server fills in (upload time) are left out when comparing what changed
+  const local = r => { const c = Object.assign({}, r); delete c.at; return c };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  const shopOf = S => ({ items: (S.items || []).map(it => { const c = Object.assign({}, it); delete c.qty; return c }), target: S.target || 0, lowAt: S.lowAt == null ? 5 : S.lowAt });
+  const shopOf = S => ({ items: (S.items || []).map(it => { const c = Object.assign({}, it); delete c.qty; return c }), target: S.target || 0, lowAt: S.lowAt == null ? 5 : S.lowAt, pcsCup: +S.pcsCup || 8, pcsPack: +S.pcsPack || 50 });
 
   function create(cfg, h) {
     const app = F.initializeApp(cfg);
@@ -74,7 +76,8 @@
         for (const [did, map] of Object.entries(coll[K.coll])) for (const [id, r] of Object.entries(map || {})) {
           if (!r || typeof r !== 'object') continue;
           if (!r.id) r.id = id;
-          arr.push(r); next[k][id] = canon(r); next[k + 'd'][id] = did;
+          if (r.at && typeof r.at.toMillis === 'function') r.at = r.at.toMillis();
+          arr.push(r); next[k][id] = canon(local(r)); next[k + 'd'][id] = did;
         }
         arr.sort((a, b) => (a.ts || 0) - (b.ts || 0));
         out[K.list] = arr;
@@ -83,6 +86,8 @@
       out.items = (sh.items || []).map(it => Object.assign({}, it, { qty: +(stock[it.id] || 0) }));
       out.target = sh.target || 0;
       out.lowAt = sh.lowAt == null ? 5 : sh.lowAt;
+      out.pcsCup = +sh.pcsCup || 8;
+      out.pcsPack = +sh.pcsPack || 50;
       out.closed = Object.assign({}, closed);
       next.shop = shop ? canon(shopOf(out)) : null;
       out.items.forEach(it => next.q[it.id] = it.qty);
@@ -141,27 +146,52 @@
     /* ---------- S -> Firestore ---------- */
     function push(S) {
       if (!me || !ready) return false;
-      const ops = new Map();
-      const put = (cn, did, field, key, val) => {
-        const p = cn + '/' + did; let op = ops.get(p);
-        if (!op) { op = { ref: F.doc(db, cn, did), data: {}, fields: [] }; ops.set(p, op) }
-        (op.data[field] = op.data[field] || {})[key] = val; op.fields.push(field + '.' + key);
+      const ops = new Map(), admin = me.role === 'admin';
+      // put(cn, did, path, value, one): set one field path inside a document. With "one" (a record id) the write
+      // goes in its own commit and names that record in the "last" field, because the security rules check
+      // staff order changes and log entries one record at a time.
+      const put = (cn, did, path, val, one) => {
+        const p = cn + '/' + did + (one ? '#' + one : ''); let op = ops.get(p);
+        if (!op) {
+          op = { ref: F.doc(db, cn, did), data: {}, fields: [], solo: !!one }; ops.set(p, op);
+          if (one) { op.data.last = one; op.fields.push('last') }
+        }
+        let o = op.data; for (let i = 0; i < path.length - 1; i++) o = o[path[i]] = o[path[i]] || {};
+        o[path[path.length - 1]] = val; op.fields.push(path.join('.'));
       };
       for (const k of KEYS) {
-        if (k === 'e' && me.role !== 'admin') continue;
+        if (k === 'e' && !admin) continue;
         const K = KIND[k], list = S[K.list] || [], seen = new Set();
         for (const r of list) {
           if (!r.id) r.id = uid();
           seen.add(r.id);
-          const j = canon(r);
-          if (synced[k][r.id] === j) continue;
-          const did = K.doc(r), old = synced[k + 'd'][r.id];
-          put(K.coll, did, k, r.id, JSON.parse(j));
-          if (old && old !== did) put(K.coll, old, k, r.id, F.deleteField());
+          const j = canon(local(r)), prev = synced[k][r.id];
+          if (prev === j) continue;
+          const did = K.doc(r), old = synced[k + 'd'][r.id], cur = JSON.parse(j);
+          if (k === 'l') {
+            // the log only grows: an entry is sent once, by the person who wrote it, stamped with server time
+            if (!prev && r.uid === me.uid) put(K.coll, did, ['l', r.id], Object.assign(cur, { at: F.serverTimestamp() }), r.id);
+            if (!prev && r.uid === me.uid) { synced[k][r.id] = j; synced[k + 'd'][r.id] = did }
+            continue;
+          }
+          if (k === 'o' && prev && old === did) {
+            // an existing order: send only the fields that changed (payment, remark, void...), never the whole order
+            const before = JSON.parse(prev);
+            for (const f of new Set(Object.keys(before).concat(Object.keys(cur)))) {
+              if (canon(before[f]) === canon(cur[f])) continue;
+              put(K.coll, did, ['o', r.id, f], f in cur ? cur[f] : F.deleteField(), admin ? null : r.id);
+            }
+          } else {
+            if (k === 'o') cur.at = F.serverTimestamp();
+            const one = k === 'o' && !admin ? r.id : null;
+            put(K.coll, did, [k, r.id], cur, one);
+            if (old && old !== did) put(K.coll, old, [k, r.id], F.deleteField(), one);
+          }
           synced[k][r.id] = j; synced[k + 'd'][r.id] = did;
         }
+        if (k === 'l') continue; // log entries are never removed
         for (const id of Object.keys(synced[k])) if (!seen.has(id)) {
-          put(K.coll, synced[k + 'd'][id], k, id, F.deleteField());
+          put(K.coll, synced[k + 'd'][id], [k, id], F.deleteField(), k === 'o' && !admin ? id : null);
           delete synced[k][id]; delete synced[k + 'd'][id];
         }
       }
@@ -171,19 +201,20 @@
       }
       (S.items || []).forEach(it => {
         const q = +it.qty || 0, d = q - (synced.q[it.id] || 0);
-        if (d) { put('meta', 'stock', 'q', it.id, F.increment(d)); synced.q[it.id] = q }
+        if (d) { put('meta', 'stock', ['q', it.id], F.increment(d)); synced.q[it.id] = q }
       });
       const cl = S.closed || {};
-      for (const [d, v] of Object.entries(cl)) { const j = canon(v); if (synced.c[d] !== j) { put('meta', 'closed', 'd', d, JSON.parse(j)); synced.c[d] = j } }
-      for (const d of Object.keys(synced.c)) if (!cl[d]) { put('meta', 'closed', 'd', d, F.deleteField()); delete synced.c[d] }
+      for (const [d, v] of Object.entries(cl)) { const j = canon(v); if (synced.c[d] !== j) { put('meta', 'closed', ['d', d], JSON.parse(j)); synced.c[d] = j } }
+      for (const d of Object.keys(synced.c)) if (!cl[d]) { put('meta', 'closed', ['d', d], F.deleteField()); delete synced.c[d] }
 
       // send in batches: at most 400 documents or about 4 MB each
       const batches = []; let b = null, n = 0, size = 0;
       for (const op of ops.values()) {
+        if (op.solo && b) { batches.push(b); b = null; n = 0; size = 0 }
         if (!b) b = F.writeBatch(db);
         if (op.full) b.set(op.ref, op.data); else b.set(op.ref, op.data, { mergeFields: op.fields });
         n++; size += JSON.stringify(op.data).length;
-        if (n >= 400 || size > 4e6) { batches.push(b); b = null; n = 0; size = 0 }
+        if (op.solo || n >= 400 || size > 4e6) { batches.push(b); b = null; n = 0; size = 0 }
       }
       if (b) batches.push(b);
       batches.forEach(x => { pending++; x.commit().then(() => { pending--; status() }, e => { pending--; status(); fail(e) }) });

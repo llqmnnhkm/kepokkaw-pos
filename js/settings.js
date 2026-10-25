@@ -47,6 +47,8 @@ function vSettings(m) {
           <button class="btn dark" data-act="export">Excel report (all data)</button>
           <div class="field"><label for="target">Daily sales target</label><span class="money"><span class="cur">RM</span><input class="inp" type="number" inputmode="decimal" min="0" id="target" value="${S.target || ''}" placeholder="Off"></span></div>
           <div class="field"><label for="lowAt">Warn when stock is at or below</label><input class="inp" type="number" min="0" id="lowAt" value="${S.lowAt}"></div>
+          <div class="field"><label for="pcsCup">Pieces in one cup</label><input class="inp" type="number" inputmode="numeric" min="1" id="pcsCup" value="${pcsPerCup()}"></div>
+          <div class="field"><label for="pcsPack">Pieces in one frozen pack</label><input class="inp" type="number" inputmode="numeric" min="1" id="pcsPack" value="${pcsPerPack()}"></div>
         </div>
         <p class="note" style="margin-top:10px">${CLOUD ? 'Sales are saved in the cloud and shared by every signed in device. A backup file is still a good extra copy. ' : ''}<b>Back up everything</b> saves one file with all orders, expenses, stock and settings. Send it to WhatsApp or Google Drive at the end of each day. <b>Merge</b> adds the orders, expenses and stock changes from a backup that aren't saved here yet, and keeps everything already here. <b>Restore</b> replaces everything with the backup, for a new or reset device. The Excel report opens in Excel, Google Sheets or Numbers. For one period only, use Export to Excel on the Dashboard.<br>Last backup: ${S.lastBackup ? dlabel(dkey(new Date(S.lastBackup))) + ', ' + tm(S.lastBackup) : 'never'}</p>
         <input type="file" id="restoreFile" hidden>

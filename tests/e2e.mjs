@@ -44,7 +44,30 @@ function canRead(p, uid) {
   return !!role(uid);
 }
 function keepsKeys(oldD, newD, f) { if (!oldD || !(f in oldD)) return true; if (!(f in newD)) return false; return Object.keys(oldD[f]).every(k => k in newD[f]) }
-function canWrite(p, uid, oldD, newD, after) {
+// server time sentinels become the time of the write, like Firestore's request.time
+const resolveTs = (v, T) => Array.isArray(v) ? v.map(x => resolveTs(x, T)) : v && typeof v === 'object' ? (v.__ts ? T : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, resolveTs(x, T)]))) : v;
+const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+const changedKeys = (a, b) => [...new Set(Object.keys(a || {}).concat(Object.keys(b || {})))].filter(k => !same((a || {})[k], (b || {})[k]));
+// mirrors staffOrderWrite in firestore.rules
+function staffOrderWrite(uid, oldD, newD, T) {
+  if (!role(uid) || !Object.keys(newD).every(k => k === 'o' || k === 'last')) return false;
+  const a = newD.o || {}, b = (oldD && oldD.o) || {}, k = newD.last, me = docs.get('users/' + uid);
+  if (typeof k !== 'string' || !k || !(k in a) || !changedKeys(a, b).every(x => x === k)) return false;
+  if (!(k in b)) { const o = a[k]; return o.id === k && o.uid === uid && o.by === 'staff' && o.name === me.name && o.at === T && o.voided == null }
+  const old = b[k], neu = a[k], ch = changedKeys(neu, old);
+  if (!ch.every(x => ['pay', 'note', 'voided'].includes(x)) || old.at == null || T >= old.at + 16 * 3600e3) return false;
+  if (ch.includes('voided')) { const v = neu.voided; if (old.voided != null || v == null || T >= old.at + 600e3 || v.uid !== uid || v.by !== 'staff') return false }
+  return true;
+}
+// mirrors logAppend in firestore.rules
+function logAppend(uid, oldD, newD, T) {
+  const r = role(uid), me = docs.get('users/' + uid);
+  if (!r || !Object.keys(newD).every(k => k === 'l' || k === 'last')) return false;
+  const a = newD.l || {}, b = (oldD && oldD.l) || {}, k = newD.last;
+  if (typeof k !== 'string' || !k || !(k in a) || k in b || !changedKeys(a, b).every(x => x === k)) return false;
+  const e = a[k]; return e.id === k && e.uid === uid && e.by === r && e.name === me.name && e.at === T;
+}
+function canWrite(p, uid, oldD, newD, after, T) {
   const [c, id] = p.split('/'), r = role(uid), admin = r === 'admin';
   const staffMap = f => !!r && Object.keys(newD).every(k => k === f) && keepsKeys(oldD, newD, f);
   if (p === 'meta/owner') return !oldD && newD.uid === uid && after.get('users/' + uid) && after.get('users/' + uid).role === 'admin';
@@ -54,9 +77,9 @@ function canWrite(p, uid, oldD, newD, after) {
     if (!oldD) return (admin && !('owner' in newD) && ['admin', 'staff'].includes(newD.role)) || (uid === id && !docs.has('meta/owner') && after.get('meta/owner') && after.get('meta/owner').uid === id && newD.role === 'admin' && newD.owner === true);
     return admin && uid !== id && oldD.owner !== true && !newD.owner && ['admin', 'staff', 'removed'].includes(newD.role);
   }
-  if (c === 'weeks') return admin || staffMap('o');
+  if (c === 'weeks') return admin || staffOrderWrite(uid, oldD, newD, T);
   if (c === 'moves') return admin || staffMap('m');
-  if (c === 'log') return admin || staffMap('l');
+  if (c === 'log') return logAppend(uid, oldD, newD, T);
   if (c === 'exp') return admin;
   return false;
 }
@@ -89,8 +112,9 @@ function handle(page, op) {
   }
   if (op.t === 'unlisten') { listeners.delete(page._kk + ':' + op.id); return {} }
   if (op.t === 'write') {
-    const after = new Map();
+    const after = new Map(), T = Date.now();
     for (const w of op.ops) {
+      w.data = resolveTs(w.data, T);
       const base = clone(after.has(w.path) ? after.get(w.path) : docs.get(w.path));
       let nd;
       if (w.opts && w.opts.mergeFields) { nd = base || {}; w.opts.mergeFields.forEach(fp => { const s = fp.split('.'); setP(nd, s, getP(w.data, s)) }) }
@@ -98,7 +122,7 @@ function handle(page, op) {
       else nd = strip(w.data);
       after.set(w.path, nd);
     }
-    for (const [p, nd] of after) if (!canWrite(p, op.uid, docs.get(p), nd, after)) { denials.push('write ' + p + ' by ' + (role(op.uid) || op.uid)); return { error: 'permission-denied' } }
+    for (const [p, nd] of after) if (!canWrite(p, op.uid, docs.get(p), nd, after, T)) { denials.push('write ' + p + ' by ' + (role(op.uid) || op.uid)); return { error: 'permission-denied' } }
     for (const [p, nd] of after) docs.set(p, nd);
     writeLog.push(...after.keys());
     broadcast([...after.keys()]);
@@ -248,6 +272,26 @@ ok(writeLog.join(',') === 'meta/shop,log/' + allOrders()[0].date.slice(0, 7) || 
 await click(B, '[data-act="view"][data-id="cashier"]'); await sleep(300);
 ok((await text(B, '.tile[data-id="ori"] .tprice')) === 'RM 9.50', 'device B: new price shows');
 
+/* ---------- 8b. staff undo, payment change and signed log entries (stricter rules) ---------- */
+denials.length = 0;
+await click(B, '[data-act="view"][data-id="cashier"]'); await sleep(200);
+await sell(B, ['ori'], 'cash');
+const bLast = allOrders().filter(o => o.name === 'Aina').sort((x, y) => y.ts - x.ts)[0];
+ok(typeof bLast.at === 'number' && bLast.uid === ainaUid, 'strict: staff order is signed and stamped with server time');
+await click(B, '.undo [data-act="voidask"]'); await sleep(150); await click(B, '[data-act="void"]'); await sleep(400);
+ok(!!allOrders().find(o => o.id === bLast.id).voided, 'strict: staff can still undo a fresh order');
+await sell(B, ['hot'], 'cash');
+const bPay = allOrders().filter(o => o.name === 'Aina').sort((x, y) => y.ts - x.ts)[0];
+await click(B, '[data-act="view"][data-id="orders"]'); await sleep(200);
+await click(B, `[data-act="order"][data-id="${bPay.id}"]`); await sleep(150);
+await click(B, `[data-act="setpay"][data-id="${bPay.id}"][data-pay="online"]`); await sleep(400);
+ok(allOrders().find(o => o.id === bPay.id).pay === 'online', 'strict: staff can switch payment on tonight\'s order');
+await click(B, '[data-act="close"]'); await sleep(100);
+ok(denials.length === 0, 'strict: normal staff use passes the stricter rules (' + denials.join('; ') + ')');
+const logs = [...docs].filter(([p]) => p.startsWith('log/')).flatMap(([, d]) => Object.values(d.l || {}));
+ok(logs.length > 0 && logs.every(e => e.uid && typeof e.at === 'number'), 'strict: every log entry is signed and server stamped (' + logs.length + ')');
+const logCount = logs.length;
+await click(B, '[data-act="view"][data-id="cashier"]'); await sleep(150);
 /* ---------- 9. removing staff blocks them straight away ---------- */
 await A.select(`select[data-urole="${ainaUid}"]`, 'removed'); await sleep(500);
 ok(docs.get('users/' + ainaUid).role === 'removed', 'team: Aina set to Removed');
@@ -298,6 +342,17 @@ ok((await A.$eval('#repOut', e => e.value)).includes('Cups: ' + expCups), 'cups:
 await click(A, '[data-act="close"]'); await sleep(100);
 await click(A, '[data-act="view"][data-id="dashboard"]'); await sleep(1200);
 ok((await A.$$eval('.stats .stat', s => s.map(x => x.textContent).join('|'))).includes('Cups'), 'cups: dashboard has a Cups tile');
+/* ---------- 9a4. dashboard opens on Today, frozen pack estimate ---------- */
+await click(A, '[data-act="view"][data-id="dashboard"]'); await sleep(1200);
+ok((await text(A, '.periods .chip.on')) === 'Today', 'dashboard: opens on Today');
+const dashCups = Number(await A.$$eval('.stats .stat', s => s.find(x => x.querySelector('span').textContent === 'Cups').querySelector('b').textContent));
+const packTile = (await A.$$eval('.stats .stat', s => s.map(x => x.textContent))).find(t => t.startsWith('Frozen packs used')) || '';
+ok(packTile.includes('≈ ' + (dashCups * 8 / 50).toFixed(1)) && packTile.includes(dashCups * 8 + ' pcs'), 'dashboard: frozen packs = cups × 8 ÷ 50 (' + dashCups + ' cups, ' + packTile.slice(0, 40) + ')');
+await click(A, '[data-act="view"][data-id="settings"]'); await sleep(250);
+await val(A, '#pcsPack', '40', 'change'); await sleep(300);
+ok(docs.get('meta/shop').pcsPack === 40, 'settings: pieces per pack saved to the cloud');
+await click(A, '[data-act="view"][data-id="dashboard"]'); await sleep(1200);
+ok(((await A.$$eval('.stats .stat', s => s.map(x => x.textContent))).find(t => t.startsWith('Frozen packs used')) || '').includes('≈ ' + (dashCups * 8 / 40).toFixed(1)), 'dashboard: estimate follows the new pack size');
 /* ---------- 9b. merge a backup file: adds only what is new ---------- */
 await click(A, '[data-act="view"][data-id="settings"]'); await sleep(250);
 const ex = allOrders().slice(0, 2), day = ex[0].date, nowTs = Date.now();
@@ -326,6 +381,7 @@ await click(A, '[data-act="view"][data-id="orders"]'); await sleep(200);
 ok((await A.$$eval('.list .row', r => r.length)) === allOrders().length, 'reopen: all cloud orders show (' + allOrders().length + ')');
 await click(A, '[data-act="lock"]'); await sleep(150); await click(A, '[data-act="yes"]'); await sleep(500);
 ok(!!(await A.$('#gateForm[data-mode="signin"]')), 'sign out: back to the sign in screen');
+ok([...docs].filter(([p]) => p.startsWith('log/')).flatMap(([, d]) => Object.values(d.l || {})).length >= logCount, 'strict: the log never lost an entry');
 console.log(failures ? `\n${failures} FAILED` : '\nALL PASSED');
 await browser.close(); server.close();
 process.exit(failures ? 1 : 0);

@@ -584,6 +584,25 @@ document.addEventListener('change', e => {
     toast(S.target ? 'Target saved' : 'Target turned off');
     return;
   }
+  if (t.id === 'pcsCup' || t.id === 'pcsPack') {
+    const v = parseInt(t.value, 10),
+      key = t.id;
+    if (!(v >= 1 && v <= 500)) {
+      t.value = key === 'pcsCup' ? pcsPerCup() : pcsPerPack();
+      toast('Enter a number from 1 to 500');
+      return;
+    }
+    const old = key === 'pcsCup' ? pcsPerCup() : pcsPerPack();
+    if (v === old) return;
+    S[key] = v;
+    logA(
+      'Changed frozen pack estimate',
+      (key === 'pcsCup' ? 'Pieces in one cup: ' : 'Pieces in one pack: ') + old + ' → ' + v
+    );
+    save();
+    toast('Saved');
+    return;
+  }
   if (t.id === 'lowAt') {
     const v = parseInt(t.value, 10);
     if (v >= 0) {

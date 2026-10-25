@@ -564,7 +564,8 @@ function mergeFrom(d, b) {
     newE = d.expenses.filter(e => e && e.id && e.date && !he.has(e.id));
   const newI = d.items.filter(i => i && i.id && !hi.has(i.id)),
     newM = (d.moves || []).filter(m => m && m.itemId && !hm.has(mk(m)));
-  const newL = (d.log || []).filter(x => x && x.ts && !hl.has(lk(x))),
+  // in sync mode the activity log only accepts entries signed by the person adding them, so old entries stay out
+  const newL = CLOUD ? [] : (d.log || []).filter(x => x && x.ts && !hl.has(lk(x))),
     newC = Object.entries(d.closed || {}).filter(([k]) => !hc[k]);
   if (!newO.length && !newE.length && !newI.length && !newM.length) {
     toast('Nothing new in this file');

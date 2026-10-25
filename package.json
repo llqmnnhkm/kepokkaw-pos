@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "test": "node tests/check-offline-files.mjs && node tests/e2e.mjs && node tests/offline.mjs local && node tests/offline.mjs cloud",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-kepokkaw \"node tests/rules.mjs\"",
     "format": "prettier --write \"js/*.js\" \"css/app.css\""
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.0.0",
+    "firebase-tools": "^15.0.0",
     "prettier": "^3.3.0",
     "puppeteer": "^24.0.0"
   }

@@ -199,12 +199,13 @@ function vDash(m) {
     </div>`
         : ''
     }
-    <div class="stats">
+    <div class="stats s6">
       <div class="stat" style="--i:0"><span>Sales</span><b data-n="${sales}" data-fmt="rm">${rm(sales)}</b><small>${a === b ? dlabel(a) : dlabel(a) + ' – ' + dlabel(b)}</small>${payLine(ords, money0) ? `<small class="paysplit">${payLine(ords, money0)}</small>` : ''}${trend(sales, P.sales, true)}</div>
       <div class="stat" style="--i:1"><span>Expenses</span><b data-n="${cost}" data-fmt="rm">${rm(cost)}</b><small>${exps.length} entries</small>${trend(cost, P.cost, false)}</div>
       <div class="stat" style="--i:2"><span>Profit</span><b class="${profit >= 0 ? 'pos-v' : 'neg-v'}" data-n="${profit}" data-fmt="rm">${profit < 0 ? '−' : ''}${rm(Math.abs(profit))}</b><small>${sales ? Math.round((profit / sales) * 100) + '% of sales' : '—'}</small>${trend(profit, P.profit, true)}</div>
       <div class="stat" style="--i:3"><span>Orders</span><b data-n="${ords.length}" data-fmt="int">${ords.length}</b><small>avg ${ords.length ? rm(sales / ords.length) : '—'}</small>${trend(ords.length, P.ords.length, true)}</div>
       <div class="stat" style="--i:4"><span>Cups</span><b data-n="${cupsIn(ords)}" data-fmt="int">${cupsIn(ords)}</b><small>${ords.length ? (cupsIn(ords) / ords.length).toFixed(1) + ' per order' : '—'}</small>${trend(cupsIn(ords), cupsIn(P.ords), true)}</div>
+      <div class="stat" style="--i:5"><span>Frozen packs used</span><b>≈ ${packsUsed(ords).toFixed(1)}</b><small>${piecesUsed(ords)} pcs · ${pcsPerCup()} pcs a cup, ${pcsPerPack()} a pack</small>${trend(piecesUsed(ords), piecesUsed(P.ords), true)}</div>
     </div>
     ${goal}
     ${daily}

@@ -2414,3 +2414,10 @@ main {
     padding: 8px 14px 6px;
   }
 }
+
+/* dashboard: six tiles as 3 by 2 on iPad and wider */
+@media (min-width: 601px) {
+  .stats.s6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

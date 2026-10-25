@@ -342,6 +342,17 @@ ok((await A.$eval('#repOut', e => e.value)).includes('Cups: ' + expCups), 'cups:
 await click(A, '[data-act="close"]'); await sleep(100);
 await click(A, '[data-act="view"][data-id="dashboard"]'); await sleep(1200);
 ok((await A.$$eval('.stats .stat', s => s.map(x => x.textContent).join('|'))).includes('Cups'), 'cups: dashboard has a Cups tile');
+/* ---------- 9a4. dashboard opens on Today, frozen pack estimate ---------- */
+await click(A, '[data-act="view"][data-id="dashboard"]'); await sleep(1200);
+ok((await text(A, '.periods .chip.on')) === 'Today', 'dashboard: opens on Today');
+const dashCups = Number(await A.$$eval('.stats .stat', s => s.find(x => x.querySelector('span').textContent === 'Cups').querySelector('b').textContent));
+const packTile = (await A.$$eval('.stats .stat', s => s.map(x => x.textContent))).find(t => t.startsWith('Frozen packs used')) || '';
+ok(packTile.includes('≈ ' + (dashCups * 8 / 50).toFixed(1)) && packTile.includes(dashCups * 8 + ' pcs'), 'dashboard: frozen packs = cups × 8 ÷ 50 (' + dashCups + ' cups, ' + packTile.slice(0, 40) + ')');
+await click(A, '[data-act="view"][data-id="settings"]'); await sleep(250);
+await val(A, '#pcsPack', '40', 'change'); await sleep(300);
+ok(docs.get('meta/shop').pcsPack === 40, 'settings: pieces per pack saved to the cloud');
+await click(A, '[data-act="view"][data-id="dashboard"]'); await sleep(1200);
+ok(((await A.$$eval('.stats .stat', s => s.map(x => x.textContent))).find(t => t.startsWith('Frozen packs used')) || '').includes('≈ ' + (dashCups * 8 / 40).toFixed(1)), 'dashboard: estimate follows the new pack size');
 /* ---------- 9b. merge a backup file: adds only what is new ---------- */
 await click(A, '[data-act="view"][data-id="settings"]'); await sleep(250);
 const ex = allOrders().slice(0, 2), day = ex[0].date, nowTs = Date.now();

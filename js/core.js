@@ -42,7 +42,7 @@ let S,
   role = 'admin',
   view = 'cashier',
   cart = {},
-  dashP = '7d',
+  dashP = 'today',
   ordDate = null,
   expMonth = null,
   pinRole = 'staff',
@@ -104,6 +104,11 @@ const isCupItem = id => {
 const cupsOf = o => o.lines.reduce((s, l) => s + (isCupItem(l.itemId) ? l.qty : 0), 0);
 const cupsIn = ords => ords.reduce((s, o) => s + cupsOf(o), 0);
 const cupTxt = n => `${n} cup${n === 1 ? '' : 's'}`;
+// Frozen pack estimate: each cup uses a set number of pieces (8 by default) and a pack holds about 50.
+const pcsPerCup = () => +S.pcsCup || 8;
+const pcsPerPack = () => +S.pcsPack || 50;
+const piecesUsed = ords => cupsIn(ords) * pcsPerCup();
+const packsUsed = ords => piecesUsed(ords) / pcsPerPack();
 // In sync mode every order, void and log entry carries who made it (checked by the security rules).
 const myName = () => (CLOUD && me ? { name: me.name, uid: me.uid } : {});
 // Firebase signs in with an email, so a username becomes a hidden email on this project's own domain:
@@ -266,6 +271,8 @@ function fresh() {
     moves: [],
     pins: { admin: '1234', staff: '0000' },
     lowAt: 5,
+    pcsCup: 8,
+    pcsPack: 50,
   };
 }
 function seed() {
@@ -287,6 +294,8 @@ function seed() {
     moves: [],
     pins: { admin: '1234', staff: '0000' },
     lowAt: 5,
+    pcsCup: 8,
+    pcsPack: 50,
   };
   const frz = s.items.find(i => i.id === 'frz'),
     now = Date.now(),

@@ -38,7 +38,7 @@
   // fields the server fills in (upload time) are left out when comparing what changed
   const local = r => { const c = Object.assign({}, r); delete c.at; return c };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  const shopOf = S => ({ items: (S.items || []).map(it => { const c = Object.assign({}, it); delete c.qty; return c }), target: S.target || 0, lowAt: S.lowAt == null ? 5 : S.lowAt });
+  const shopOf = S => ({ items: (S.items || []).map(it => { const c = Object.assign({}, it); delete c.qty; return c }), target: S.target || 0, lowAt: S.lowAt == null ? 5 : S.lowAt, pcsCup: +S.pcsCup || 8, pcsPack: +S.pcsPack || 50 });
 
   function create(cfg, h) {
     const app = F.initializeApp(cfg);
@@ -86,6 +86,8 @@
       out.items = (sh.items || []).map(it => Object.assign({}, it, { qty: +(stock[it.id] || 0) }));
       out.target = sh.target || 0;
       out.lowAt = sh.lowAt == null ? 5 : sh.lowAt;
+      out.pcsCup = +sh.pcsCup || 8;
+      out.pcsPack = +sh.pcsPack || 50;
       out.closed = Object.assign({}, closed);
       next.shop = shop ? canon(shopOf(out)) : null;
       out.items.forEach(it => next.q[it.id] = it.qty);
